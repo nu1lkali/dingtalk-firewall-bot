@@ -1,111 +1,52 @@
+# ============================================================
+# 旧版配置文件（仅用于首次启动时一次性迁移到 Web 配置中心）
+# ============================================================
+#
+# 从 v2 开始，所有配置都由 Web 管理台维护，存放在 data/app.db。
+# 首次启动时，本文件（以及 .env）中的阿里云 AK、实例列表、端口等信息
+# 会被自动导入配置中心；导入之后本文件不再被读取，可以安全删除。
+#
+# 如需重新导入：删除 data/app.db 后重启服务。
+# ------------------------------------------------------------
+
 webhook:
-  port: 5000
+  port: 5050
   secret_key: ""
 
 cloud_providers:
-  tencent:
-    enabled: true
-    secret_id: "${TENCENT_SECRET_ID}"
-    secret_key: "${TENCENT_SECRET_KEY}"
-    region: "ap-chengdu"
-    security_groups:
-      - id: "sg-agijh6qt"
-        protocol: "tcp"
-        ports: ["1-65535"]
-        description: "Home IP full access"
-        ip_version: "auto"
-
-  aliyun:
-    enabled: true
-    access_key_id: "${ALIYUN_ACCESS_KEY_ID}"
-    access_key_secret: "${ALIYUN_ACCESS_KEY_SECRET}"
-    region: "cn-shenzhen"
-    security_groups:
-      - id: "sg-wz97sm51bf4kuvwbt841"
-        protocol: "tcp"
-        ports: ["1-65535"]
-        description: "Home IP full access"
-        ip_version: "auto"
-
-  aws:
-    enabled: false
-    access_key_id: "${AWS_ACCESS_KEY_ID}"
-    secret_access_key: "${AWS_SECRET_ACCESS_KEY}"
-    region: "us-east-1"
-    security_groups:
-      - id: ""
-        protocol: "tcp"
-        ports: ["1-65535"]
-        description: "Home IP full access"
-        ip_version: "auto"
-
-  huawei:
-    enabled: false
-    ak: "${HUAWEI_AK}"
-    sk: "${HUAWEI_SK}"
-    region: "cn-north-1"
-    security_groups:
-      - id: ""
-        protocol: "tcp"
-        ports: ["1-65535"]
-        description: "Home IP full access"
-        ip_version: "auto"
-
-  tencent_lighthouse:
-    enabled: true
-    secret_id: "${TENCENT_SECRET_ID}"
-    secret_key: "${TENCENT_SECRET_KEY}"
-    region: "ap-guangzhou"
-    type: "lighthouse"
-    instances:
-      - id: "lhins-k02ok78j"
-        protocol: "tcp"
-        ports: ["1-65535"]
-        description: "Home Lighthouse full access"
-        ip_version: "auto"
-
+  # 本平台核心：阿里云轻量应用服务器（SWAS）防火墙
   aliyun_lighthouse:
-    enabled: false
+    enabled: true
     access_key_id: "${ALIYUN_ACCESS_KEY_ID}"
     access_key_secret: "${ALIYUN_ACCESS_KEY_SECRET}"
     region: "cn-hangzhou"
     type: "lighthouse"
     instances:
-      - id: ""
+      - id: "your-instance-id"
         protocol: "tcp"
-        ports: ["1-65535"]
+        ports: ["10000/65535"]
         description: "Home SWAS full access"
         ip_version: "auto"
 
+  # 以下为旧版多云 provider，默认关闭（需自行安装对应 SDK）
+  tencent:
+    enabled: false
+  aliyun:
+    enabled: false
+  aws:
+    enabled: false
+  huawei:
+    enabled: false
+  tencent_lighthouse:
+    enabled: false
   aws_lightsail:
     enabled: false
-    access_key_id: "${AWS_ACCESS_KEY_ID}"
-    secret_access_key: "${AWS_SECRET_ACCESS_KEY}"
-    region: "us-east-1"
-    type: "lightsail"
-    instances:
-      - id: ""
-        protocol: "tcp"
-        ports: ["1-65535"]
-        description: "Home Lightsail full access"
-        ip_version: "auto"
-
   huawei_lighthouse:
     enabled: false
-    ak: "${HUAWEI_AK}"
-    sk: "${HUAWEI_SK}"
-    region: "cn-north-1"
-    type: "lighthouse"
-    instances:
-      - id: ""
-        protocol: "tcp"
-        ports: ["1-65535"]
-        description: "Home HECS full access"
-        ip_version: "auto"
 
 rules:
   auto_cleanup_old_ip: true
-  max_rules_per_group: 50
+  max_rules_per_group: 100
   cleanup_days: 7
   ipv6_prefix: 128
   ipv4_prefix: 32

@@ -1,27 +1,23 @@
-version: '3.8'
-
 services:
   dynamic-cloud-firewall:
     build: .
     container_name: dynamic-cloud-firewall
     ports:
-      - "5000:5000"
+      - "5050:5050"
     environment:
-      - TENCENT_SECRET_ID=${TENCENT_SECRET_ID}
-      - TENCENT_SECRET_KEY=${TENCENT_SECRET_KEY}
-      - ALIYUN_ACCESS_KEY_ID=${ALIYUN_ACCESS_KEY_ID}
-      - ALIYUN_ACCESS_KEY_SECRET=${ALIYUN_ACCESS_KEY_SECRET}
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
-      - HUAWEI_AK=${HUAWEI_AK}
-      - HUAWEI_SK=${HUAWEI_SK}
+      - TZ=Asia/Shanghai
+      # 首次启动时用于初始化配置中心，之后一律在 Web 端维护
+      - ALIYUN_ACCESS_KEY_ID=${ALIYUN_ACCESS_KEY_ID:-}
+      - ALIYUN_ACCESS_KEY_SECRET=${ALIYUN_ACCESS_KEY_SECRET:-}
     volumes:
-      - ./config:/app/config
+      # 配置、规则镜像、日志、任务记录都在这两个目录，务必持久化
+      - ./data:/app/data
       - ./logs:/app/logs
     restart: unless-stopped
+    # 单进程部署：定时任务与钉钉长连接均依赖进程内单例
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:5050/health', timeout=5).status==200 else 1)"]
       interval: 30s
-      timeout: 10s
+      timeout: 8s
       retries: 3
-      start_period: 40s
+      start_period: 20s

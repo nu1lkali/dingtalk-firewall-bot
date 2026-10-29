@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>离线 · 动态云防火墙</title>
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    margin: 0; min-height: 100dvh; display: flex; align-items: center; justify-content: center;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: #f5f6fa; color: #171a23; padding: 24px;
+  }
+  .box { text-align: center; max-width: 340px; }
+  .mark {
+    width: 64px; height: 64px; margin: 0 auto 18px; border-radius: 18px;
+    background: linear-gradient(135deg, #6366f1, #4338ca); color: #fff;
+    display: flex; align-items: center; justify-content: center; font-size: 26px; font-weight: 700;
+  }
+  h1 { font-size: 17px; margin: 0 0 8px; }
+  p { font-size: 13px; line-height: 1.7; color: #4b5563; margin: 0 0 18px; }
+  button {
+    height: 38px; padding: 0 20px; border-radius: 10px; border: none; cursor: pointer;
+    background: #4f46e5; color: #fff; font-size: 13.5px; font-weight: 600;
+  }
+  @media (prefers-color-scheme: dark) {
+    body { background: #0d1117; color: #e7ecf5; }
+    p { color: #b6c0d1; }
+  }
+</style>
+</head>
+<body>
+  <div class="box">
+    <div class="mark">盾</div>
+    <h1>网络不可用</h1>
+    <p>管理台需要连接服务器才能读写放行规则。<br>请检查网络后重试。</p>
+    <button onclick="location.replace('/')">重新连接</button>
+  </div>
+</body>
+</html>

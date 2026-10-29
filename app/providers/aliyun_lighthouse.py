@@ -24,7 +24,7 @@ class AliyunLighthouseProvider(BaseProvider):
             config = open_api_models.Config(
                 access_key_id=access_key_id, access_key_secret=access_key_secret
             )
-            config.endpoint = f"swas-open.{region}.aliyuncs.com"
+            config.endpoint = f"swas.{region}.aliyuncs.com"
             self.client = SwasClient(config)
             self.region = region
             return True
@@ -36,33 +36,32 @@ class AliyunLighthouseProvider(BaseProvider):
         """列出实例的防火墙规则"""
         try:
             from alibabacloud_swas_open20200601 import models as swas_models
+            from alibabacloud_tea_util import models as util_models
 
-            request = swas_models.DescribeFirewallRulesRequest()
+            request = swas_models.ListFirewallRulesRequest()
             request.instance_id = instance_id
+            request.region_id = self.region
 
-            response = self.client.describe_firewall_rules(request)
+            runtime = util_models.RuntimeOptions()
+            response = self.client.list_firewall_rules_with_options(request, runtime)
 
             rules = []
             if response.body and response.body.firewall_rules:
                 for rule in response.body.firewall_rules:
-                    # 解析IP地址
-                    ip_address = rule.rule_cidr or ""
+                    # 正确字段名：source_cidr_ip
+                    ip_address = rule.source_cidr_ip or ""
                     ip_version = "IPv4"
                     if ip_address:
                         ip_address = ip_address.replace("/32", "").replace("/128", "")
                         if is_ipv6(ip_address):
                             ip_version = "IPv6"
 
-                    # 解析端口
+                    # 解析端口（阿里云返回的端口格式可能是 "80/80" 或 "3306"）
                     ports = []
                     if rule.port and rule.port != "ALL":
-                        if "-" in rule.port:
-                            parts = rule.port.split("-")
-                            if (
-                                len(parts) == 2
-                                and parts[0].isdigit()
-                                and parts[1].isdigit()
-                            ):
+                        if "/" in rule.port:
+                            parts = rule.port.split("/")
+                            if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
                                 start, end = int(parts[0]), int(parts[1])
                                 if start == end:
                                     ports = [start]
@@ -73,10 +72,13 @@ class AliyunLighthouseProvider(BaseProvider):
 
                     rules.append(
                         {
-                            "rule_id": rule.firewall_rule_id,
-                            "protocol": (rule.protocol or "").lower(),
+                            # 正确字段名：rule_id
+                            "rule_id": rule.rule_id,
+                            # 正确字段名：rule_protocol
+                            "protocol": (rule.rule_protocol or "").lower(),
                             "ports": ports,
                             "ip_address": ip_address,
+                            # 正确字段名：remark
                             "description": rule.remark or "",
                             "ip_version": ip_version,
                         }
@@ -100,55 +102,55 @@ class AliyunLighthouseProvider(BaseProvider):
 
         try:
             from alibabacloud_swas_open20200601 import models as swas_models
+            from alibabacloud_tea_util import models as util_models
 
-            # 判断IP版本
             ip_version = "IPv6" if is_ipv6(ip_address) else "IPv4"
             cidr_suffix = "/128" if ip_version == "IPv6" else "/32"
             cidr_block = f"{ip_address}{cidr_suffix}"
 
-            # 检查规则是否已存在
+            # 构建端口字符串：阿里云要求用斜线分隔，单端口直接写数字
+            if len(ports) == 1:
+                port_str = str(ports[0])
+            elif len(ports) > 1:
+                port_str = f"{min(ports)}/{max(ports)}"
+            else:
+                port_str = "ALL"
+
             existing_rules = self.list_firewall_rules(instance_id)
-            for port in ports:
-                port_str = (
-                    str(port)
-                    if len(ports) == 1
-                    else f"{min(ports)}-{max(ports)}"
-                    if ports
-                    else "ALL"
-                )
 
-                # 检查规则是否已存在
-                for rule in existing_rules:
-                    if (
-                        rule["protocol"] == protocol.lower()
-                        and rule["ip_address"] == ip_address
-                        and (
-                            (len(ports) == 1 and set(rule["ports"]) == set([port]))
-                            or (len(ports) > 1 and rule["ports"] == ports)
-                            or (len(ports) == 0 and len(rule["ports"]) == 0)
-                        )
-                    ):
-                        logger.info(
-                            f"阿里云轻量服务器防火墙规则已存在: {instance_id}, IP: {ip_address}, Port: {port_str}"
-                        )
-                        continue
+            # 检查规则是否已存在
+            for rule in existing_rules:
+                if (
+                    rule["protocol"] == protocol.lower()
+                    and rule["ip_address"] == ip_address
+                    and (
+                        (len(ports) == 1 and set(rule["ports"]) == set(ports))
+                        or (len(ports) > 1 and rule["ports"] == sorted(ports))
+                        or (len(ports) == 0 and len(rule["ports"]) == 0)
+                    )
+                ):
+                    logger.info(
+                        f"阿里云轻量服务器防火墙规则已存在: {instance_id}, IP: {ip_address}, Port: {port_str}"
+                    )
+                    return True
 
-                # 创建规则
-                firewall_rule = swas_models.CreateFirewallRulesRequestFirewallRules()
-                firewall_rule.protocol = protocol.upper()
-                firewall_rule.port = port_str
-                firewall_rule.rule_cidr = cidr_block
-                firewall_rule.remark = description
+            # 创建规则（注意字段名：rule_protocol、source_cidr_ip）
+            firewall_rule = swas_models.CreateFirewallRulesRequestFirewallRules()
+            firewall_rule.rule_protocol = protocol.upper()
+            firewall_rule.port = port_str
+            firewall_rule.source_cidr_ip = cidr_block
+            firewall_rule.remark = description
 
-                request = swas_models.CreateFirewallRulesRequest()
-                request.instance_id = instance_id
-                request.firewall_rules = [firewall_rule]
+            request = swas_models.CreateFirewallRulesRequest()
+            request.instance_id = instance_id
+            request.region_id = self.region
+            request.firewall_rules = [firewall_rule]
 
-                self.client.create_firewall_rules(request)
-                logger.info(
-                    f"阿里云轻量服务器防火墙规则添加成功: {instance_id}, IP: {ip_address}, Port: {port_str}"
-                )
-
+            runtime = util_models.RuntimeOptions()
+            self.client.create_firewall_rules_with_options(request, runtime)
+            logger.info(
+                f"阿里云轻量服务器防火墙规则添加成功: {instance_id}, IP: {ip_address}, Port: {port_str}"
+            )
             return True
         except Exception as e:
             logger.error(f"阿里云轻量服务器添加防火墙规则失败: {e}")
@@ -160,12 +162,15 @@ class AliyunLighthouseProvider(BaseProvider):
 
         try:
             from alibabacloud_swas_open20200601 import models as swas_models
+            from alibabacloud_tea_util import models as util_models
 
             request = swas_models.DeleteFirewallRulesRequest()
             request.instance_id = instance_id
+            request.region_id = self.region
             request.firewall_rule_ids = [rule_id]
 
-            self.client.delete_firewall_rules(request)
+            runtime = util_models.RuntimeOptions()
+            self.client.delete_firewall_rules_with_options(request, runtime)
             logger.info(
                 f"阿里云轻量服务器防火墙规则删除成功: {instance_id}, Rule: {rule_id}"
             )
@@ -192,7 +197,7 @@ class AliyunLighthouseProvider(BaseProvider):
                 rule["protocol"] == protocol.lower()
                 and (
                     (len(ports) == 1 and set(rule["ports"]) == set(ports))
-                    or (len(ports) > 1 and rule["ports"] == ports)
+                    or (len(ports) > 1 and rule["ports"] == sorted(ports))
                     or (len(ports) == 0 and len(rule["ports"]) == 0)
                 )
                 and rule["ip_address"] != current_ip
@@ -218,9 +223,8 @@ class AliyunLighthouseProvider(BaseProvider):
         """查找并删除旧的IP规则"""
         return self.cleanup_old_firewall_rules(instance_id, new_ip, protocol, ports, 7)
 
-    # 为了兼容现有接口，实现安全组相关方法
+    # 兼容接口
     def list_security_group_rules(self, security_group_id: str) -> List[Dict[str, Any]]:
-        """列出防火墙规则（兼容接口）"""
         return self.list_firewall_rules(security_group_id)
 
     def add_security_group_rule(
@@ -231,11 +235,9 @@ class AliyunLighthouseProvider(BaseProvider):
         ports: List[int],
         description: str = "",
     ) -> bool:
-        """添加防火墙规则（兼容接口）"""
         return self.add_firewall_rule(
             security_group_id, ip_address, protocol, ports, description
         )
 
     def remove_security_group_rule(self, security_group_id: str, rule_id: str) -> bool:
-        """删除防火墙规则（兼容接口）"""
         return self.remove_firewall_rule(security_group_id, rule_id)

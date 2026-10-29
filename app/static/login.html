@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>登录 · 动态云防火墙</title>
+<link rel="manifest" href="/static/manifest.webmanifest">
+<meta name="theme-color" content="#4f46e5">
+<link rel="apple-touch-icon" href="/static/icon-180.png">
+<link rel="icon" type="image/png" href="/static/icon-192.png">
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; min-height: 100dvh; display: grid; place-items: center;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: radial-gradient(1200px 600px at 20% 0%, #e8ecff 0%, #f5f6fa 45%, #eef1f8 100%);
+    color: #171a23;
+    padding: 0;
+  }
+  .wrap { width: 100%; max-width: 400px; padding: 24px; }
+  .card {
+    background: #fff; border: 1px solid #e6e8ef; border-radius: 18px;
+    box-shadow: 0 24px 60px rgba(16,24,40,.10); padding: 30px 28px;
+  }
+  .mark {
+    width: 46px; height: 46px; border-radius: 13px; display: grid; place-items: center;
+    background: linear-gradient(135deg, #6366f1, #4338ca); color: #fff; font-weight: 700;
+    font-size: 19px; box-shadow: 0 10px 22px rgba(79,70,229,.28); margin-bottom: 18px;
+  }
+  h1 { font-size: 20px; margin: 0 0 4px; letter-spacing: .2px; }
+  p.sub { margin: 0 0 22px; color: #8b93a7; font-size: 13px; }
+  label { display: block; font-size: 12.5px; font-weight: 600; color: #4b5563; margin: 0 0 6px; }
+  input {
+    width: 100%; height: 40px; padding: 0 12px; margin-bottom: 14px;
+    border: 1px solid #d6d9e4; border-radius: 10px; font-size: 14px; font-family: inherit;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  input:focus { outline: none; border-color: #4f46e5; box-shadow: 0 0 0 3px rgba(79,70,229,.12); }
+  button {
+    width: 100%; height: 41px; border: none; border-radius: 10px; cursor: pointer;
+    background: #4f46e5; color: #fff; font-size: 14px; font-weight: 600; font-family: inherit;
+    box-shadow: 0 6px 16px rgba(79,70,229,.26); transition: background .15s;
+  }
+  button:hover { background: #4338ca; }
+  button:disabled { opacity: .6; cursor: not-allowed; }
+  .err {
+    background: #fdecec; color: #e02424; border: 1px solid #f6d5d5; border-radius: 9px;
+    padding: 9px 12px; font-size: 12.5px; margin-bottom: 14px; display: none;
+  }
+  .tip { margin-top: 18px; font-size: 12px; color: #8b93a7; line-height: 1.6; text-align: center; }
+
+  /* 手机端：避免 iOS 聚焦输入框时自动放大页面 */
+  @media (max-width: 640px) {
+    .wrap { padding: 16px; }
+    .card { padding: 24px 20px; border-radius: 16px; }
+    input { font-size: 16px; height: 44px; }
+    button { height: 44px; }
+    h1 { font-size: 19px; }
+  }
+
+  /* 跟随系统暗色 */
+  @media (prefers-color-scheme: dark) {
+    body {
+      background: radial-gradient(1200px 600px at 20% 0%, #1a1f34 0%, #0d1117 45%, #0b0f15 100%);
+      color: #e7ecf5;
+    }
+    .card { background: #161c26; border-color: #24303f; box-shadow: 0 24px 60px rgba(0,0,0,.5); }
+    label { color: #b6c0d1; }
+    input {
+      background: #111823; border-color: #334154; color: #e7ecf5;
+    }
+    input::placeholder { color: #6b7688; }
+    input:focus { border-color: #7b74ff; box-shadow: 0 0 0 3px rgba(123,116,255,.18); }
+    p.sub, .tip { color: #8b95a8; }
+    .err { background: #3a1c1f; border-color: #5a262b; color: #f87171; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <div class="mark">盾</div>
+    <h1>动态云防火墙</h1>
+    <p class="sub">IP 放行管理平台 · 请登录后台</p>
+    <div class="err" id="err"></div>
+    <form id="login-form">
+      <label for="username">用户名</label>
+      <input id="username" name="username" autocomplete="username" placeholder="admin" required>
+      <label for="password">密码</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" placeholder="请输入密码" required>
+      <button type="submit" id="submit-btn">登 录</button>
+    </form>
+    <div class="tip">默认账号 admin / admin123；首次登录会强制修改口令，改完才能进入后台</div>
+  </div>
+</div>
+
+<script>
+const form = document.getElementById('login-form');
+const err = document.getElementById('err');
+const btn = document.getElementById('submit-btn');
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  err.style.display = 'none';
+  btn.disabled = true;
+  btn.textContent = '登录中…';
+  try {
+    const resp = await fetch('/api/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: document.getElementById('username').value.trim(),
+        password: document.getElementById('password').value,
+      }),
+    });
+    const data = await resp.json();
+    if (resp.ok && data.ok) {
+      location.href = '/';
+      return;
+    }
+    throw new Error(data.message || '登录失败');
+  } catch (e2) {
+    err.textContent = e2.message;
+    err.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = '登 录';
+  }
+});
+</script>
+</body>
+</html>

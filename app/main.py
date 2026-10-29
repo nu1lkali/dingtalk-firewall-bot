@@ -1,24 +1,19 @@
 #!/usr/bin/env python3
 """
-主应用入口
+兼容入口：保留 `python app/main.py` 的启动方式。
+
+新版本统一由根目录 run.py 启动（Web 管理台 + 定时任务 + 钉钉机器人）。
 """
 
-from app.handlers.webhook import init_webhook_app
+import os
+import sys
 
-
-def main():
-    """主函数"""
-    app = init_webhook_app()
-
-    # 获取配置
-    from app.config import config_manager
-
-    webhook_config = config_manager.get_webhook_config()
-    port = webhook_config.get("port", 5000)
-
-    # 启动应用
-    app.run(host="0.0.0.0", port=port, debug=False)
-
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if BASE_DIR not in sys.path:
+    sys.path.insert(0, BASE_DIR)
 
 if __name__ == "__main__":
+    sys.path.insert(0, BASE_DIR)
+    from run import main
+
     main()

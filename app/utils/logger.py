@@ -1,45 +1,65 @@
-from loguru import logger
-import sys
+#!/usr/bin/env python3
+"""
+统一日志：标准库 logging，控制台带颜色，文件按大小滚动。
+
+对外暴露与 loguru 相同的常用接口（info / warning / error / debug / exception），
+业务代码无需关心底层实现。
+"""
+
+from __future__ import annotations
+
+import logging
 import os
+import sys
+from logging.handlers import RotatingFileHandler
+
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+DEFAULT_LOG_FILE = os.path.join(BASE_DIR, "logs", "app.log")
+
+_COLORS = {
+    "DEBUG": "\033[36m",
+    "INFO": "\033[32m",
+    "WARNING": "\033[33m",
+    "ERROR": "\033[31m",
+    "CRITICAL": "\033[35m",
+}
+_RESET = "\033[0m"
 
 
-def setup_logger(log_file: str = "logs/app.log", level: str = "INFO"):
-    """
-    设置日志记录器
+class _ColorFormatter(logging.Formatter):
+    def format(self, record: logging.LogRecord) -> str:
+        color = _COLORS.get(record.levelname, "")
+        record.levelname_c = f"{color}{record.levelname:<8}{_RESET}"
+        return super().format(record)
 
-    Args:
-        log_file: 日志文件路径
-        level: 日志级别
-    """
-    # 确保日志目录存在
+
+def setup_logger(log_file: str = DEFAULT_LOG_FILE, level: str = "INFO") -> logging.Logger:
     log_dir = os.path.dirname(log_file)
-    if log_dir and not os.path.exists(log_dir):
-        os.makedirs(log_dir)
+    if log_dir:
+        os.makedirs(log_dir, exist_ok=True)
 
-    # 移除默认处理器
-    logger.remove()
+    root = logging.getLogger("dcf")
+    root.setLevel(getattr(logging, level.upper(), logging.INFO))
+    root.handlers.clear()
+    root.propagate = False
 
-    # 添加控制台输出
-    logger.add(
-        sys.stdout,
-        format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
-        level=level,
-        colorize=True,
+    console = logging.StreamHandler(sys.stdout)
+    console.setFormatter(
+        _ColorFormatter("%(asctime)s | %(levelname_c)s | %(name)s - %(message)s", "%H:%M:%S")
     )
+    root.addHandler(console)
 
-    # 添加文件输出
-    logger.add(
-        log_file,
-        format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}",
-        level=level,
-        rotation="10 MB",
-        retention="30 days",
-        compression="zip",
-        encoding="utf-8",
+    file_handler = RotatingFileHandler(
+        log_file, maxBytes=10 * 1024 * 1024, backupCount=5, encoding="utf-8"
     )
+    file_handler.setFormatter(
+        logging.Formatter("%(asctime)s | %(levelname)-8s | %(name)s - %(message)s")
+    )
+    root.addHandler(file_handler)
+    return root
 
-    return logger
 
-
-# 初始化日志记录器
-logger = setup_logger()
+logger = setup_logger(
+    log_file=os.environ.get("LOG_FILE", DEFAULT_LOG_FILE),
+    level=os.environ.get("LOG_LEVEL", "INFO"),
+)

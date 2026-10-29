@@ -2,34 +2,24 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# 安装系统依赖
-RUN apt-get update && apt-get install -y \
-    gcc \
-    && rm -rf /var/lib/apt/lists/*
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app \
+    TZ=Asia/Shanghai \
+    LANG=C.UTF-8
 
-# 复制依赖文件
 COPY requirements.txt .
+RUN pip install --no-cache-dir -i https://mirrors.aliyun.com/pypi/simple/ -r requirements.txt
 
-# 安装Python依赖
-RUN pip install --no-cache-dir -r requirements.txt
-
-# 复制应用代码
 COPY app/ ./app/
+COPY run.py ./
 COPY config/ ./config/
 
-# 创建日志目录
-RUN mkdir -p logs
+RUN mkdir -p logs data
 
-# 暴露端口
-EXPOSE 5000
+EXPOSE 5050
 
-# 设置环境变量
-ENV PYTHONPATH=/app
-ENV PYTHONUNBUFFERED=1
+HEALTHCHECK --interval=30s --timeout=8s --start-period=15s --retries=3 \
+    CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:5050/health', timeout=5).status==200 else 1)"
 
-# 健康检查
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:5000/health || exit 1
-
-# 启动命令
-CMD ["python", "-m", "gunicorn", "--bind", "0.0.0.0:5000", "--workers", "4", "--timeout", "120", "app.main:app"]
+# 必须单进程运行：内置 APScheduler 与钉钉长连接都是进程内单例
+CMD ["python", "run.py"]

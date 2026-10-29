@@ -1,12 +1,25 @@
-flask==3.0.0
-loguru==0.7.2
-pyyaml==6.0.1
-python-dotenv==1.0.0
-tencentcloud-sdk-python==3.0.1152
-alibabacloud-ecs20140526==5.0.0
-alibabacloud-swas-open20200601==3.0.0
-#alibabacloud-slb20140515==5.0.0
-boto3==1.34.111
-huaweicloudsdkcore==3.0.100
-huaweicloudsdkecs==3.0.100
-gunicorn==21.2.0
+# 动态云防火墙 · IP 放行管理平台
+# ---------------------------------------------------------------
+# Web / 调度
+flask==3.1.3
+waitress==3.0.2
+apscheduler==3.11.3
+requests==2.34.2
+pyyaml==6.0.3
+python-dotenv==1.2.4
+
+# 阿里云轻量应用服务器防火墙（SWAS-OPEN 2020-06-01）
+alibabacloud_swas_open20200601==4.0.0
+alibabacloud_tea_openapi==0.4.6
+alibabacloud_tea_util==0.3.15
+
+# 钉钉 Stream 模式长连接
+dingtalk-stream==0.24.3
+
+# 可选：旧的云端 provider（腾讯云 / AWS / 华为云 / 阿里云 ECS）
+# 不启用多云时可以不装，装完体积较大
+# tencentcloud-sdk-python==3.0.1152
+# alibabacloud-ecs20140526==5.0.0
+# boto3==1.34.111
+# huaweicloudsdkcore==3.0.100
+# huaweicloudsdkecs==3.0.100

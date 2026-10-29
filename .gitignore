@@ -35,6 +35,10 @@ env/
 # Environment variables
 .env
 
+# 运行时数据：配置中心、规则镜像、日志（含密钥，切勿提交）
+data/
+.venv/
+
 # Config files with sensitive data
 config/config.yaml
 
@@ -56,3 +60,14 @@ Thumbs.db
 .coverage
 htmlcov/
 test_*.py
+
+# 截图/调试临时产物
+_chrome_profile/
+_*.db
+_*.txt
+
+# 工作区/助手本地数据（含内部笔记，不入库）
+.workbuddy/
+
+# 导入的第三方文档摘录（仅本地参考）
+阿里云相关.txt
