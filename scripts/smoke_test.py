@@ -9,11 +9,41 @@ from __future__ import annotations
 
 import os
 import sys
+import tempfile
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, BASE_DIR)
 
 PASS, FAIL = [], []
+
+# --------------------------------------------------------------------------- 隔离
+# 历史教训：本脚本曾经直接跑在 data/app.db 上，而它包含「强制改密」用例，
+# 结果把真实管理员口令改成了 Smoke@2026pw。以下三步保证它永远碰不到生产数据：
+#   1) 库指向临时目录（必须在 import app.* 之前设置，Store 在模块导入时就建连接）
+#   2) 旧配置也写一份假的到临时目录，既验证迁移逻辑，又不读真实 AK
+#   3) 启动时硬校验，万一库仍是 data/app.db 就直接退出
+_TMP = tempfile.mkdtemp(prefix="dcf-smoke-")
+os.environ["APP_DB_PATH"] = os.path.join(_TMP, "smoke.db")
+
+_FAKE_YAML = os.path.join(_TMP, "config.yaml")
+with open(_FAKE_YAML, "w", encoding="utf-8") as _f:
+    _f.write(
+        "webhook:\n"
+        "  port: 5050\n"
+        '  secret_key: ""\n'
+        "cloud_providers:\n"
+        "  aliyun_lighthouse:\n"
+        "    enabled: true\n"
+        '    access_key_id: "dummy-ak-id"\n'
+        '    access_key_secret: "dummy-ak-secret"\n'
+        '    region: "cn-hangzhou"\n'
+        "    instances:\n"
+        '      - id: "i-smoke-0001"\n'
+        '        description: "冒烟测试实例"\n'
+        "rules:\n"
+        "  auto_cleanup_old_ip: true\n"
+        "  cleanup_days: 7\n"
+    )
 
 
 def check(name: str, condition: bool, detail: str = "") -> None:
@@ -31,7 +61,19 @@ def main() -> int:
     print("=" * 62)
 
     print("\n[1] 配置中心与旧配置迁移")
+    import app.settings as settings_mod
     from app.settings import settings
+
+    # 断掉真实配置来源：旧 yaml 与 settings.json 都指向临时副本
+    settings_mod.CONFIG_YAML = _FAKE_YAML
+    settings_mod.CONFIG_JSON = os.path.join(_TMP, "settings.json")
+
+    from app.store import store as _store
+
+    _real_db = os.path.abspath(os.path.join(BASE_DIR, "data", "app.db"))
+    if os.path.abspath(_store.db_path) == _real_db:
+        print("  [FATAL] 自检脚本指向了真实数据库，已中止（会改掉生产口令）")
+        return 2
 
     data = settings.load()
     check("配置可加载", isinstance(data, dict) and "dingtalk" in data)
