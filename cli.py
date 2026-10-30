@@ -179,7 +179,7 @@ def cmd_list(client: Client, args) -> int:
 def cmd_allow(client: Client, args) -> int:
     ids = instance_ids(client, args.instance)
     if not ids:
-        print("没有可用实例：请先在管理台「系统设置 → 纳管实例」里添加", file=sys.stderr)
+        print("没有可用实例：请先在管理后台「系统设置 → 纳管实例」里添加", file=sys.stderr)
         return 3
     body = {
         "instance_ids": ids,
@@ -284,7 +284,7 @@ def build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="环境变量：DCF_SERVER（默认 http://127.0.0.1:5050）、DCF_TOKEN",
     )
-    parser.add_argument("--server", default=DEFAULT_SERVER, help="管理台地址")
+    parser.add_argument("--server", default=DEFAULT_SERVER, help="管理后台地址")
     parser.add_argument("--token", default=DEFAULT_TOKEN, help="API Token（读写或只读）")
     parser.add_argument("--timeout", type=int, default=30, help="请求超时秒数")
     parser.add_argument("--json", action="store_true", help="以 JSON 输出（便于脚本消费）")

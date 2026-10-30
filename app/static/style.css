@@ -1,5 +1,5 @@
 /* ============================================================
-   动态云防火墙 · 管理台样式
+   动态云防火墙 · 管理后台样式
    ============================================================ */
 :root {
   --bg: #f5f6fa;
@@ -148,9 +148,19 @@ a { color: var(--accent); text-decoration: none; }
 }
 
 .nav-item .ico {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: inherit;
+}
+
+.nav-item .ico svg {
   width: 18px;
-  text-align: center;
-  font-size: 15px;
+  height: 18px;
+  display: block;
 }
 
 .nav-badge {
@@ -446,9 +456,10 @@ textarea.input { height: auto; padding: 9px 11px; resize: vertical; min-height: 
 
 .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .form-row-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.form-row-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
 
 @media (max-width: 720px) {
-  .form-row, .form-row-3 { grid-template-columns: 1fr; }
+  .form-row, .form-row-3, .form-row-4 { grid-template-columns: 1fr; }
 }
 
 .switch {
@@ -1355,4 +1366,115 @@ label.switch .track {
   flex: 0 0 38px;
   width: 38px;
   height: 22px;
+}
+
+/* ========================================================== 二次验证 (2FA) */
+.f2fa-bind { display: flex; gap: 18px; align-items: flex-start; flex-wrap: wrap; }
+
+.f2fa-qr {
+  width: 180px;
+  height: 180px;
+  flex: 0 0 auto;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+}
+.f2fa-qr svg { width: 100%; height: 100%; display: block; }
+
+.f2fa-meta { flex: 1 1 240px; min-width: 220px; }
+
+.f2fa-secret {
+  display: block;
+  font-size: 13px;
+  letter-spacing: 1px;
+  word-break: break-all;
+  background: var(--panel-alt);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.row-gap { display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
+
+@media (max-width: 720px) {
+  .f2fa-bind { flex-direction: column; }
+  .f2fa-qr { width: 160px; height: 160px; align-self: center; }
+}
+
+/* ---------------------------------------------------------- 使用教程页 */
+.guide-toc {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 16px;
+}
+.guide-toc-label { font-size: 12px; color: var(--muted); }
+.guide-toc a {
+  padding: 5px 11px; border-radius: 999px; font-size: 12px; text-decoration: none;
+  color: var(--text-soft); background: var(--panel); border: 1px solid var(--border);
+}
+.guide-toc a:hover { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+
+#page-guide .card { scroll-margin-top: 84px; }
+#page-guide .card + .card { margin-top: 16px; }
+#page-guide p { margin: 0 0 10px; line-height: 1.75; color: var(--text-soft); }
+#page-guide code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12.5px; padding: 1px 6px; border-radius: 5px;
+  background: var(--code-bg); border: 1px solid var(--border); color: var(--accent-dark);
+}
+
+.guide-steps { display: flex; flex-direction: column; gap: 16px; }
+.guide-step { display: flex; gap: 14px; align-items: flex-start; }
+.guide-step-num {
+  flex: 0 0 28px; width: 28px; height: 28px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 600; color: #fff; background: var(--accent);
+}
+.guide-step-body h4 { margin: 3px 0 6px; font-size: 14px; font-weight: 600; color: var(--text); }
+.guide-step-body p:last-child { margin-bottom: 0; }
+
+.guide-note {
+  font-size: 12.5px; color: var(--muted); line-height: 1.7;
+  padding-left: 10px; border-left: 2px solid var(--border);
+}
+
+.guide-list { margin: 0 0 12px; padding-left: 18px; line-height: 1.85; color: var(--text-soft); }
+.guide-list li { margin-bottom: 2px; }
+.guide-ordered { padding-left: 20px; }
+
+.guide-table { width: 100%; border-collapse: collapse; margin: 6px 0 14px; font-size: 13px; }
+.guide-table th, .guide-table td {
+  text-align: left; padding: 9px 12px; vertical-align: top;
+  border-bottom: 1px solid var(--border);
+}
+.guide-table th { color: var(--muted); font-weight: 500; font-size: 12px; background: var(--panel-alt); }
+.guide-table td { color: var(--text-soft); }
+.guide-table tr:last-child td { border-bottom: none; }
+
+.guide-code {
+  margin: 4px 0 14px; padding: 12px 14px; overflow-x: auto;
+  background: var(--code-bg); border: 1px solid var(--border); border-radius: var(--radius-sm);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12.5px; line-height: 1.7; color: var(--text); white-space: pre;
+}
+
+.guide-faq { border-bottom: 1px solid var(--border); padding: 10px 0; }
+.guide-faq:last-child { border-bottom: none; }
+.guide-faq summary { cursor: pointer; font-weight: 500; color: var(--text); list-style: none; }
+.guide-faq summary::-webkit-details-marker { display: none; }
+.guide-faq summary::before {
+  content: "\203A"; display: inline-block; width: 16px; color: var(--muted);
+}
+.guide-faq[open] summary::before { transform: rotate(90deg); }
+.guide-faq[open] { padding-bottom: 4px; }
+.guide-faq p { margin: 8px 0 4px; }
+.guide-faq .guide-code { margin: 8px 0 4px; }
+
+@media (max-width: 720px) {
+  .guide-step { gap: 10px; }
+  .guide-table { font-size: 12px; }
+  .guide-table th, .guide-table td { padding: 8px; }
+  .guide-code { font-size: 11.5px; }
 }

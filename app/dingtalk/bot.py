@@ -22,10 +22,10 @@ import threading
 import time
 from typing import Any, Dict, Optional
 
-from app.core import rules_service
+from app.core import rules_service, twofa
 from app.dingtalk import parser as cmd_parser
 from app.dingtalk import render
-from app.settings import settings
+from app.settings import DEFERRED_TTL, settings
 from app.store import now_str, store
 from app.utils.logger import logger
 
@@ -35,7 +35,9 @@ def _do_allow(parsed: Dict[str, Any], payload: Dict[str, Any]) -> str:
     cfg = settings.section("dingtalk")
     ports = parsed["ports"] or cfg.get("default_ports") or "ALL"
     protocol = parsed["protocol"] or cfg.get("default_protocol") or "tcp"
-    ttl = int(cfg.get("default_ttl_minutes") or 1440)
+    # 有效期只认 rules_policy.default_ttl_minutes（设置页「规则策略」里那个），
+    # 早期读的是 dingtalk.default_ttl_minutes，两处各存一份，改了一处不生效。
+    ttl = int(settings.get("rules_policy.default_ttl_minutes") or 0) or DEFERRED_TTL
     actor = payload.get("sender_nick") or payload.get("sender_id") or "dingtalk"
     result = rules_service.allow_ip(
         ",".join(parsed["ips"]),
@@ -137,8 +139,54 @@ def handle_message(payload: Dict[str, Any]) -> Optional[Any]:
         )
         return None
 
-    parsed = cmd_parser.parse(text)
+    # 二次验证：机器人开启后，只有变更类指令（放行/删除/续期）需要动态口令；
+    # 读取类（帮助/列表/状态/我的IP）不打断，避免影响日常查看。
+    need_2fa = twofa.is_required("dingtalk")
+    strict_2fa = need_2fa and twofa.dingtalk_all()
+    bot_code = ""
+    parse_text = text
+    if need_2fa:
+        bot_code, parse_text = twofa.extract_code(text)
+
+    parsed = cmd_parser.parse(parse_text)
     intent = parsed["intent"]
+
+    if need_2fa and (strict_2fa or intent in ("allow", "delete", "renew")):
+        if not bot_code:
+            example = "帮助 code=123456" if strict_2fa else "1.2.3.4 22 code=123456"
+            reply = render.error_reply(
+                "需要二次验证",
+                "机器人已开启二次验证，请在指令后附带动态口令。",
+                f"示例：`{example}`（口令来自认证器 App，每 30 秒刷新）。",
+            )
+            store.add_bot_message(
+                {
+                    "conversation_id": conversation_id,
+                    "conversation_title": payload.get("conversation_title", ""),
+                    "sender_id": sender_id,
+                    "sender_nick": payload.get("sender_nick", ""),
+                    "text": text,
+                    "intent": "denied",
+                    "reply": "缺少动态口令",
+                    "status": "denied",
+                }
+            )
+            return reply
+        if not twofa.verify(twofa.secret(), bot_code, window=twofa.window()):
+            reply = render.error_reply("动态口令无效", "口令错误或已过期，请重新获取后再试。")
+            store.add_bot_message(
+                {
+                    "conversation_id": conversation_id,
+                    "conversation_title": payload.get("conversation_title", ""),
+                    "sender_id": sender_id,
+                    "sender_nick": payload.get("sender_nick", ""),
+                    "text": text,
+                    "intent": "denied",
+                    "reply": "动态口令无效",
+                    "status": "denied",
+                }
+            )
+            return reply
 
     try:
         if intent == "help":

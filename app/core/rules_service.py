@@ -122,6 +122,8 @@ def allow_ip(
     instance_ids: Optional[List[str]] = None,
     cleanup_old: Optional[bool] = None,
     tag: str = "",
+    auto_renew: bool = False,
+    renew_mode: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     放行一个或多个 IP。
@@ -160,6 +162,12 @@ def allow_ip(
 
     client = build_client()
     results: List[Dict[str, Any]] = []
+    max_rules = int(policy.get("max_rules_per_instance") or 0)
+    # 公网 IP 跟随生成的规则默认开启自动续期
+    renew_flag = 1 if (auto_renew or source == "public_ip") else 0
+    # renew_mode 决定到期续期时的行为：same=原地顺延(原IP)，follow=探测并跟随新IP
+    # （public_ip 来源必须跟随当前公网 IP，强制 follow）
+    renew_mode_value = "follow" if source == "public_ip" else (renew_mode or "follow")
 
     for inst in targets:
         instance_id = inst["instance_id"]
@@ -205,7 +213,7 @@ def allow_ip(
                         }
                     )
                     _upsert_local(
-                        instance_id, instance_name, existing, source, actor, ttl, plain_ip, tag
+                        instance_id, instance_name, existing, source, actor, ttl, plain_ip, tag, renew_flag, renew_mode_value
                     )
                     continue
 
@@ -222,6 +230,23 @@ def allow_ip(
                 remark = f"{AUTO_TAG} {plain_ip} {port_to_display(port)}"
                 if description:
                     remark = f"{AUTO_TAG} {description}"[:64]
+                # 单实例规则上限（0 = 不限制）：防止脚本刷爆云端配额
+                live_count = store.count_rules(instance_id=instance_id, status_in=["active"])
+                if max_rules > 0 and live_count >= max_rules:
+                    results.append(
+                        {
+                            "instance_id": instance_id,
+                            "instance_name": instance_name,
+                            "ip": plain_ip,
+                            "port": port,
+                            "port_display": port_to_display(port),
+                            "protocol": proto.lower(),
+                            "status": "failed",
+                            "action": "limit",
+                            "message": f"已达单实例规则上限 {max_rules} 条，未下发",
+                        }
+                    )
+                    continue
                 try:
                     created = client.create_rule(instance_id, cidr, proto, port, remark)
                     new_rule = {
@@ -233,7 +258,7 @@ def allow_ip(
                     }
                     cloud_rules.append(new_rule)
                     _upsert_local(
-                        instance_id, instance_name, new_rule, source, actor, ttl, plain_ip, tag
+                        instance_id, instance_name, new_rule, source, actor, ttl, plain_ip, tag, renew_flag, renew_mode_value
                     )
                     results.append(
                         {
@@ -316,6 +341,8 @@ def _upsert_local(
     ttl: int,
     plain_ip: str,
     tag: str = "",
+    auto_renew: int = 0,
+    renew_mode: str = "follow",
 ) -> None:
     existing = [
         row
@@ -330,16 +357,21 @@ def _upsert_local(
         if (row.get("protocol") or "").lower() == (rule.get("protocol") or "").lower()
     ]
     expires_at = _ts_after_minutes(ttl)
+    # ttl<=0 是显式「永久放行」：必须把旧的到期时间清空，不能回填
+    permanent = ttl is not None and ttl <= 0
     if existing:
         hit = existing[0]
         store.update_rule(
             hit["id"],
             rule_id=rule.get("rule_id", "") or hit["rule_id"],
-            expires_at=expires_at or hit["expires_at"],
+            expires_at=expires_at if permanent else (expires_at or hit["expires_at"]),
             status="active",
             # 到期时间被刷新，提醒标记也要重置，否则下次到期不再提醒
             notified_at="",
             tag=tag or hit.get("tag", ""),
+            auto_renew=auto_renew or int(hit.get("auto_renew") or 0),
+            # 已有规则重新放行时，保留其原有续期方式，不擅自翻转
+            renew_mode=hit.get("renew_mode") or "follow",
         )
         return
     store.add_rule(
@@ -357,6 +389,8 @@ def _upsert_local(
             "actor": actor,
             "expires_at": expires_at,
             "tag": tag or "",
+            "auto_renew": auto_renew,
+            "renew_mode": renew_mode,
         }
     )
 
@@ -418,6 +452,8 @@ def create_rule_manual(
     actor: str = "web",
     instance_ids: Optional[List[str]] = None,
     tag: str = "",
+    auto_renew: bool = False,
+    renew_mode: Optional[str] = None,
 ) -> Dict[str, Any]:
     """手动新增。instance_id 为空时按 instance_ids 批量下发到多台实例。"""
     targets = instance_ids or ([instance_id] if instance_id else [])
@@ -432,6 +468,8 @@ def create_rule_manual(
         instance_ids=targets or None,
         cleanup_old=False,
         tag=tag,
+        auto_renew=auto_renew,
+        renew_mode=renew_mode,
     )
     return result
 
@@ -827,12 +865,34 @@ def update_rule_manual(
     description: Optional[str] = None,
     ttl_minutes: Optional[int] = None,
     actor: str = "web",
+    auto_renew: Optional[bool] = None,
+    renew_mode: Optional[str] = None,
 ) -> Dict[str, Any]:
     row = store.get_rule(rule_pk)
     if not row:
         return {"ok": False, "message": "规则不存在"}
     if row["status"] != "active":
         return {"ok": False, "message": "请先启用规则再编辑"}
+
+    # 仅切换本地标记（自动续期 / 续期方式 / 有效期）时，不必碰云端
+    if ip is None and ports is None and protocol is None and description is None:
+        fields = {}
+        if auto_renew is not None:
+            fields["auto_renew"] = 1 if auto_renew else 0
+        if renew_mode is not None:
+            fields["renew_mode"] = renew_mode
+        if ttl_minutes is not None:
+            fields["expires_at"] = _ts_after_minutes(ttl_minutes)
+            fields["notified_at"] = ""
+        if fields:
+            store.update_rule(rule_pk, **fields)
+        store.log(
+            "更新标记",
+            target=f"{row['ip']}:{row['port']}",
+            message="已更新自动续期 / 续期方式 / 有效期等本地标记",
+            detail={"actor": actor},
+        )
+        return {"ok": True, "message": "已更新本地标记"}
 
     new_ip = ip or row["ip"]
     new_ports = split_ports(ports if ports is not None else row["port"])
@@ -880,6 +940,8 @@ def update_rule_manual(
         description=new_desc or "",
         rule_id=new_rule_id or row["rule_id"],
         expires_at=expires_at or "",
+        **({"auto_renew": 1 if auto_renew else 0} if auto_renew is not None else {}),
+        **({"renew_mode": renew_mode} if renew_mode is not None else {}),
     )
     store.log("编辑规则", target=f"{plain_ip}:{port}", message=f"已更新为 {new_proto.upper()} {port}")
     return {"ok": True, "message": "已更新"}
@@ -964,7 +1026,13 @@ def _split_rule_into_ports(
 
 # --------------------------------------------------------------------------- 自动任务
 def cleanup_expired_rules() -> Dict[str, Any]:
-    """删除已过期的自动放行规则。"""
+    """
+    清理已过期的自动放行规则。
+
+    先处理勾选了「自动续期」的：探测公网 IP 后续期/跟随；剩下的才真正删除。
+    这样续期和清理在同一轮里完成，不会出现「先删后建」的断流窗口。
+    """
+    renewed = auto_renew_due_rules()
     expired = store.expired_active_rules()
     removed, failed = 0, 0
     client = build_client()
@@ -998,7 +1066,242 @@ def cleanup_expired_rules() -> Dict[str, Any]:
                 for r in expired
             ],
         )
-    return {"removed": removed, "failed": failed, "total": len(expired)}
+    return {"removed": removed, "failed": failed, "total": len(expired), "auto_renew": renewed}
+
+
+# --------------------------------------------------------------------------- 公网 IP 跟随
+def _probe_public_ip(retries: int = 3) -> str:
+    """探测本机公网 IPv4；多试几次，避免单次接口抖动导致误判为「IP 变了」。"""
+    from app.core import iputil
+
+    for _ in range(max(1, retries)):
+        info = iputil.get_public_ip()
+        if info.get("ip"):
+            return str(info["ip"])
+    return ""
+
+
+def _notify_ip_switch(old_ips: List[str], new_ip: str, reason: str) -> bool:
+    """
+    公网 IP 变化并已自动跟随成功时，推一条钉钉通知。
+
+    只在 public_ip.notify_on_change 开启时发送；未配置通知群时静默跳过，
+    绝不影响主流程（发通知失败不能导致放行失败）。
+    """
+    try:
+        if not settings.get("public_ip.notify_on_change", True):
+            return False
+        old_text = "、".join(f"`{ip}`" for ip in sorted(set(old_ips))) or "`无`"
+        text = (
+            "### 🌐 公网 IP 已自动跟随\n\n"
+            f"- **旧 IP**：{old_text}\n"
+            f"- **新 IP**：`{new_ip}`\n"
+            f"- **触发**：{reason}\n"
+            f"- **时间**：{now_str()}\n\n"
+            "> 云端防火墙已切换到新 IP，原 IP 的放行规则已删除。"
+        )
+        from app.dingtalk.client import notify
+
+        return bool(notify(text, title="公网 IP 变化通知"))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"公网 IP 变化通知发送失败: {exc}")
+        return False
+
+
+def _follow_ip(row: Dict[str, Any], new_ip: str, ttl: int, actor: str = "cron") -> Dict[str, Any]:
+    """
+    把一条已有规则从旧 IP 换成新 IP：云端删旧 + 建新，本地改写记录。
+
+    用于「自动续期」时发现 IP 变了（家庭宽带重播号），以及每日公网 IP 同步。
+    """
+    cidr, plain_ip = normalize_cidr(new_ip)
+    instance_id = row["instance_id"]
+    client = build_client()
+    old_rule_id = row.get("rule_id") or ""
+    if old_rule_id:
+        try:
+            client.delete_rules(instance_id, [old_rule_id])
+        except CloudError as exc:
+            # 云端本来就没有这条（换过 IP / 手工删过）不算失败
+            if not _is_not_found(str(exc)):
+                return {"ok": False, "message": f"删除旧规则失败: {exc}"}
+    remark = f"{AUTO_TAG} 自动跟随 {plain_ip}"
+    try:
+        created = client.create_rule(
+            instance_id, cidr, (row.get("protocol") or "tcp"), (row.get("port") or ALL_PORTS), remark
+        )
+    except CloudError as exc:
+        return {"ok": False, "message": f"创建新规则失败: {exc}"}
+
+    store.update_rule(
+        row["id"],
+        ip=plain_ip,
+        cidr=cidr,
+        rule_id=created.get("rule_id", ""),
+        expires_at=_ts_after_minutes(ttl),
+        notified_at="",
+        description=remark,
+        status="active",
+    )
+    store.log(
+        "自动跟随 IP",
+        target=f"{row.get('instance_name') or instance_id} {row['ip']}:{row['port']}",
+        message=f"{row['ip']} → {plain_ip}，新有效期 {_ts_after_minutes(ttl)}",
+        detail={"actor": actor},
+    )
+    return {"ok": True, "ip": plain_ip, "rule_id": created.get("rule_id", "")}
+
+
+def auto_renew_due_rules(now: Optional[str] = None) -> Dict[str, Any]:
+    """
+    处理已到期且勾选了「自动续期」的规则，按每条规则的 renew_mode 分流：
+
+    * renew_mode="follow"（默认）：探测公网 IP。没变就顺延有效期（云端不动）；
+      变了就删旧规则、按新 IP 重建，实现家庭宽带重播号后自动跟随；
+    * renew_mode="same"：原地续期。无论公网 IP 是否变化，都保持规则原有 IP、
+      仅把有效期顺延到「现在 + 默认时长」，不探测、不碰云端（适合固定 / 静态 IP）；
+    * 探测失败（仅 follow 模式）：这一轮不续期，规则仍会被过期清理回收（宁可断开，也不盲目放开）。
+    """
+    now = now or now_str()
+    rows = [
+        r
+        for r in store.find_rules(status_in=["active"], auto_renew=True)
+        if (r.get("expires_at") or "") and r["expires_at"] <= now
+    ]
+    if not rows:
+        return {"total": 0, "renewed": 0, "followed": 0, "failed": 0}
+
+    ttl = int(settings.get("rules_policy.default_ttl_minutes") or 0) or 1440
+    renewed = followed = failed = renewed_same = 0
+    followed_from: List[str] = []
+    public_ip = None  # 仅 follow 模式需要探测，惰性探测一次即可
+    for row in rows:
+        mode = (row.get("renew_mode") or "follow")
+        if mode == "same":
+            # 「原 IP 续期」：保持当前规则 IP，仅把有效期顺延到「现在 + TTL」，
+            # 不探测公网 IP、不碰云端（适合固定 IP / 静态办公网段）。
+            store.update_rule(row["id"], expires_at=_ts_after_minutes(ttl), notified_at="")
+            renewed += 1
+            renewed_same += 1
+            continue
+        # follow 模式：探测公网 IP，没变顺延、变了跟随
+        if public_ip is None:
+            public_ip = _probe_public_ip()
+        if not public_ip:
+            failed += 1
+            logger.warning(f"自动续期跳过 {row['ip']}:{row['port']} —— 公网 IP 探测失败")
+            continue
+        if row["ip"] == public_ip:
+            store.update_rule(row["id"], expires_at=_ts_after_minutes(ttl), notified_at="")
+            renewed += 1
+            continue
+        result = _follow_ip(row, public_ip, ttl)
+        if result.get("ok"):
+            followed += 1
+            followed_from.append(row["ip"])
+        else:
+            failed += 1
+            logger.warning(f"自动续期跟随失败 {row['ip']}:{row['port']} - {result.get('message')}")
+
+    store.log(
+        "定时任务-自动续期",
+        message=f"到期 {len(rows)} 条：续期 {renewed}，跟随新 IP {followed}，失败 {failed}",
+        status="success" if failed == 0 else "warning",
+    )
+    if followed:
+        # 多条端口规则一起跟随，只推一条通知
+        _notify_ip_switch(followed_from, public_ip, "规则到期自动续期时发现公网 IP 变化")
+    return {"total": len(rows), "renewed": renewed, "renewed_same": renewed_same,
+            "followed": followed, "failed": failed, "public_ip": public_ip}
+
+
+def _public_ip_ttl(cfg: Dict[str, Any]) -> int:
+    """
+    解析「公网 IP 自动放行」的有效期：
+
+    * 负数（通常是 -1）→ 0，表示永久放行，不写 expires_at，永不参与过期清理；
+    * 0                → 跟随 rules_policy.default_ttl_minutes；
+    * 正数              → 直接使用该分钟数。
+    """
+    try:
+        value = int(cfg.get("ttl_minutes") or 0)
+    except (TypeError, ValueError):
+        value = 0
+    if value < 0:
+        return 0
+    if value == 0:
+        return int(settings.get("rules_policy.default_ttl_minutes") or 0) or 1440
+    return value
+
+
+def sync_public_ip_rule() -> Dict[str, Any]:
+    """
+    每天把「当前公网 IP」同步进防火墙（settings.public_ip）。
+
+    行为：没有对应规则就创建；已有同 IP 规则就刷新有效期；IP 变了就把旧的换掉。
+    生成的规则自动带「自动续期」，避免两次任务之间到期被清理。
+    """
+    cfg = settings.section("public_ip")
+    if not cfg.get("enabled"):
+        return {"skipped": True, "reason": "未开启「公网 IP 自动放行」"}
+
+    public_ip = _probe_public_ip()
+    if not public_ip:
+        return {"ok": False, "message": "探测公网 IP 失败（多个来源均不可用）"}
+
+    ttl = _public_ip_ttl(cfg)
+    rows = store.find_rules(status_in=["active"], source="public_ip")
+    same = [r for r in rows if r["ip"] == public_ip]
+    stale = [r for r in rows if r["ip"] != public_ip]
+    stale_ips = [r["ip"] for r in stale]
+
+    changed = 0
+    for row in stale:
+        if delete_rule(row["id"], actor="cron").get("ok"):
+            changed += 1
+
+    if same:
+        expires_at = _ts_after_minutes(ttl)
+        for row in same:
+            store.update_rule(row["id"], expires_at=expires_at, notified_at="")
+        return {
+            "ok": True,
+            "ip": public_ip,
+            "created": 0,
+            "refreshed": len(same),
+            "replaced": changed,
+            "ttl_minutes": ttl,
+            "expires_at": expires_at,
+        }
+
+    result = allow_ip(
+        public_ip,
+        ports=cfg.get("ports") or "ALL",
+        protocol=cfg.get("protocol") or "tcp",
+        description="公网 IP 自动跟随",
+        source="public_ip",
+        actor="cron",
+        ttl_minutes=ttl,
+        tag=cfg.get("tag") or "公网IP",
+        cleanup_old=False,
+        auto_renew=True,
+    )
+    if not result.get("ok"):
+        return {"ok": False, "message": result.get("message") or "放行失败"}
+
+    # 只有「真的换了 IP」才通知；首次创建（stale 为空）不打扰
+    if stale_ips:
+        _notify_ip_switch(stale_ips, public_ip, "定时同步发现公网 IP 变化")
+
+    return {
+        "ok": True,
+        "ip": public_ip,
+        "created": result.get("summary", {}).get("created", 0),
+        "refreshed": 0,
+        "replaced": changed,
+        "ttl_minutes": ttl,
+        "expires_at": _ts_after_minutes(ttl),
+    }
 
 
 def run_expiring_notice() -> Dict[str, Any]:

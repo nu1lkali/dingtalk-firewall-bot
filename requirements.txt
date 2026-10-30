@@ -8,6 +8,9 @@ requests==2.34.2
 pyyaml==6.0.3
 python-dotenv==1.2.4
 
+# 二次验证（2FA）二维码渲染：纯 Python、零依赖，输出内联 SVG
+segno==1.6.1
+
 # 阿里云轻量应用服务器防火墙（SWAS-OPEN 2020-06-01）
 alibabacloud_swas_open20200601==4.0.0
 alibabacloud_tea_openapi==0.4.6

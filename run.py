@@ -3,7 +3,7 @@
 动态云防火墙 · IP 放行管理平台
 ==============================
 
-统一入口：启动 Web 管理台、内置定时任务调度器与钉钉机器人长连接。
+统一入口：启动 Web 管理后台、内置定时任务调度器与钉钉机器人长连接。
 
 用法：
     python run.py                 # 默认读取配置中的 host/port
@@ -38,7 +38,7 @@ def banner(host: str, port: int, cron: bool, bot: bool) -> None:
     print(line)
     print("  动态云防火墙 · IP 放行管理平台")
     print(line)
-    print(f"  管理台      http://{'127.0.0.1' if host in ('0.0.0.0', '') else host}:{port}")
+    print(f"  管理后台      http://{'127.0.0.1' if host in ('0.0.0.0', '') else host}:{port}")
     print(f"  内置定时任务 {'已启用' if cron else '已关闭'}")
     print(f"  钉钉机器人   {'已启用' if bot else '已关闭'}")
     print(f"  Webhook     POST /webhook/ip-change")

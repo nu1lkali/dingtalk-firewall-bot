@@ -50,6 +50,23 @@ DEFAULTS: Dict[str, Any] = {
     "webhook": {
         "secret": "",
     },
+    # 二次验证（TOTP）。与口令 / API Token 叠加，用于高敏感动作的二次确认。
+    # scope 决定哪些场景需要动态口令；secret 为 Base32 密钥（敏感，打码显示）。
+    "twofa": {
+        "enabled": False,
+        "secret": "",
+        "issuer": "动态云防火墙",
+        "account": "admin",
+        "window": 1,          # 允许前后漂移的周期数（±1 => 容许 30s 时钟偏差）
+        "scope": {
+            "web_login": False,  # 网页登录时校验动态口令
+            "webhook": False,    # /webhook/ip-change 需携带 X-2FA-Code
+            "dingtalk": False,   # 钉钉机器人验证动态口令
+        },
+        "dingtalk_all": False,       # true=所有机器人指令都要口令；false=仅放行/删除/续期
+        "webhook_skip_private": False,  # true=来自内网/回环的 Webhook 免 2FA
+        "webhook_trusted_cidrs": [],    # 额外白名单网段（这些来源免 2FA）
+    },
     "notify": {
         "enabled": False,          # 规则变更是否推送钉钉
         "on_allow": True,
@@ -78,12 +95,20 @@ DEFAULTS: Dict[str, Any] = {
         "allowed_conversations": [],  # 为空表示不限制群
         "allowed_users": [],          # 为空表示不限制发送人
         "require_at": True,           # 仅处理 @机器人 的消息
-        "reply_with_markdown": True,
         "default_protocol": "tcp",
         "default_ports": "ALL",       # 未指定端口时的放行范围
-        "default_ttl_minutes": DEFERRED_TTL,
         "notify_on_webhook": False,   # webhook 放行成功后是否推送钉钉通知
         "notify_conversation_id": "",
+        # 注意：默认有效期只有 rules_policy.default_ttl_minutes 一处，
+        # 早期版本在 dingtalk 下也放了一份，已废弃（会造成改了一处不生效）
+    },
+    "public_ip": {
+        "enabled": False,             # 开启后由定时任务把「当前公网 IP」同步进防火墙
+        "ports": "ALL",
+        "protocol": "tcp",
+        "ttl_minutes": 0,             # 0 = 跟随 rules_policy.default_ttl_minutes；-1 = 永久放行（不写到期时间）
+        "tag": "公网IP",
+        "notify_on_change": True,     # 公网 IP 变化并自动跟随成功后，是否推一条钉钉通知
     },
     "aliyun": {
         "enabled": True,
@@ -113,6 +138,9 @@ DEFAULTS: Dict[str, Any] = {
             "health_probe": {"enabled": True, "cron": "*/10 * * * *", "name": "云凭证健康检查"},
             "daily_report": {"enabled": True, "cron": "0 9 * * *", "name": "每日状态推送"},
             "expiring_notice": {"enabled": True, "cron": "*/5 * * * *", "name": "到期前提醒"},
+            # 动态 IP 场景下「每天一次」太慢（尤其主机夜间关机时），默认改成每小时：
+            # IP 未变时只做一次本地更新，不调用云端接口，开销可忽略。
+            "sync_public_ip": {"enabled": True, "cron": "0 * * * *", "name": "公网 IP 自动放行"},
             "backup_db": {"enabled": True, "cron": "0 5 * * *", "name": "数据库备份"},
         },
     },
@@ -267,6 +295,8 @@ class Settings:
                     logger.info("已从 config/config.yaml 导入旧配置到 Web 配置中心")
 
         merged = _deep_merge(DEFAULTS, data)
+        if self._apply_migrations(merged):
+            store.set_setting("app_settings", merged)
         if not merged["server"].get("secret_key"):
             merged["server"]["secret_key"] = _uid()
         if not merged["server"].get("api_token"):
@@ -289,6 +319,31 @@ class Settings:
 
     def reload(self) -> Dict[str, Any]:
         return self.load()
+
+    # ------------------------------------------------------------------ 迁移
+    def _apply_migrations(self, merged: Dict[str, Any]) -> bool:
+        """
+        一次性配置迁移。
+
+        每条迁移执行后写入 ``migrations`` 标记；之后即使用户把值改回去，
+        也不会被再次覆盖（标记跟着配置一起持久化）。
+        返回 True 表示有改动需要落库。
+        """
+        marks = dict(merged.get("migrations") or {})
+        dirty = False
+
+        # 1) 公网 IP 同步：旧默认「每天 04:00」→ 新默认「每小时」。
+        #    动态 IP 场景下每天一次太慢；主机夜间关机时更是天天错过。
+        if not marks.get("public_ip_interval"):
+            job = ((merged.get("cron") or {}).get("jobs") or {}).get("sync_public_ip")
+            if isinstance(job, dict) and job.get("cron") == "0 4 * * *":
+                job["cron"] = "0 * * * *"
+            marks["public_ip_interval"] = True
+            dirty = True
+
+        if dirty:
+            merged["migrations"] = marks
+        return dirty
 
     @property
     def data(self) -> Dict[str, Any]:
@@ -316,6 +371,7 @@ class Settings:
             "aliyun": ["access_key_secret"],
             "server": ["admin_password", "api_token", "api_token_readonly"],
             "webhook": ["secret"],
+            "twofa": ["secret"],
         }.items():
             for key in keys:
                 value = str((data.get(section) or {}).get(key) or "")

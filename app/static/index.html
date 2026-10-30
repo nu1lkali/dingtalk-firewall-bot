@@ -41,21 +41,24 @@
 
     <nav class="nav">
       <div class="nav-group-label">总览</div>
-      <div class="nav-item active" data-page="dashboard"><span class="ico">◎</span>仪表盘</div>
+      <div class="nav-item active" data-page="dashboard"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.6"/><rect x="14" y="3" width="7" height="7" rx="1.6"/><rect x="3" y="14" width="7" height="7" rx="1.6"/><rect x="14" y="14" width="7" height="7" rx="1.6"/></svg></span>仪表盘</div>
 
       <div class="nav-group-label">安全管理</div>
-      <div class="nav-item" data-page="rules"><span class="ico">☰</span>放行规则
+      <div class="nav-item" data-page="rules"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.5-3 7.6-7 9-4-1.4-7-4.5-7-9V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg></span>放行规则
         <span class="nav-badge" id="nav-rule-badge">0</span>
       </div>
-      <div class="nav-item" data-page="cloud"><span class="ico">☁</span>阿里云防火墙</div>
+      <div class="nav-item" data-page="cloud"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 18a4 4 0 0 1 .4-7.98 5 5 0 0 1 9.6-1.02A3.5 3.5 0 0 1 17 18z"/></svg></span>阿里云防火墙</div>
 
       <div class="nav-group-label">自动化</div>
-      <div class="nav-item" data-page="dingtalk"><span class="ico">✆</span>钉钉机器人</div>
-      <div class="nav-item" data-page="cron"><span class="ico">◷</span>定时任务</div>
+      <div class="nav-item" data-page="dingtalk"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-11.3 7.3L4 21l1.7-5.7A8 8 0 1 1 21 12z"/><path d="M9 11h.01M15 11h.01M9.5 15a4 4 0 0 0 5 0"/></svg></span>钉钉机器人</div>
+      <div class="nav-item" data-page="cron"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></svg></span>定时任务</div>
 
       <div class="nav-group-label">审计与配置</div>
-      <div class="nav-item" data-page="logs"><span class="ico">≡</span>日志与记录</div>
-      <div class="nav-item" data-page="settings"><span class="ico">⚙</span>系统设置</div>
+      <div class="nav-item" data-page="logs"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h4"/></svg></span>日志与记录</div>
+      <div class="nav-item" data-page="settings"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1"/></svg></span>系统设置</div>
+
+      <div class="nav-group-label">帮助</div>
+      <div class="nav-item" data-page="guide"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H19v15H6.5A2.5 2.5 0 0 0 4 20.5z"/><path d="M4 5.5V20.5"/><path d="M9 8h6M9 12h4"/></svg></span>使用教程</div>
     </nav>
 
     <div class="sidebar-footer">
@@ -338,7 +341,7 @@
               </div>
               <div class="divider"></div>
               <div class="section-title">放行默认策略</div>
-              <div class="form-row-3">
+              <div class="form-row">
                 <div class="field">
                   <label>默认端口</label>
                   <input class="input" id="dt-default-ports" placeholder="ALL">
@@ -351,11 +354,8 @@
                     <option value="icmp">ICMP</option>
                   </select>
                 </div>
-                <div class="field">
-                  <label>有效期（分钟）</label>
-                  <input class="input" id="dt-ttl" type="number" min="0">
-                </div>
               </div>
+              <div class="hint">规则有效期统一在「系统设置 → 规则策略 → 默认有效期」配置，这里不再单独设置。</div>
               <div class="divider"></div>
               <div class="section-title">访问控制</div>
               <div class="field">
@@ -443,7 +443,7 @@
                 <div class="field">
                   <label>消息内容（Markdown）</label>
                   <textarea class="input" id="dt-test-text" rows="3">### ✅ 测试消息
-来自动态云防火墙管理台。</textarea>
+来自动态云防火墙管理后台。</textarea>
                 </div>
                 <button class="btn btn-block" id="btn-dt-send">发送测试消息</button>
               </div>
@@ -616,17 +616,65 @@
             </div>
 
             <div class="card">
+              <div class="card-head"><h3>公网 IP 自动放行</h3><span class="desc">定时把当前公网 IP 同步进防火墙，动态 IP 不掉线</span></div>
+              <div class="card-body">
+                <div class="field">
+                  <label class="switch"><input type="checkbox" id="cfg-publicip-enabled"><span class="track"></span>自动同步当前公网 IP（默认每小时检查一次）</label>
+                </div>
+                <div class="field">
+                  <label class="switch"><input type="checkbox" id="cfg-publicip-notify"><span class="track"></span>IP 变化并自动跟随成功后，推送钉钉通知</label>
+                </div>
+                <div class="form-row">
+                  <div class="field">
+                    <label>放行端口</label>
+                    <input class="input" id="cfg-publicip-ports" placeholder="ALL">
+                  </div>
+                  <div class="field">
+                    <label>协议</label>
+                    <select class="select" id="cfg-publicip-protocol">
+                      <option value="tcp">TCP</option>
+                      <option value="udp">UDP</option>
+                      <option value="icmp">ICMP</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="form-row">
+                  <div class="field">
+                    <label>有效期（分钟，0 跟随默认，-1 永久）</label>
+                    <input class="input" id="cfg-publicip-ttl" type="number" min="-1">
+                  </div>
+                  <div class="field">
+                    <label>标签</label>
+                    <input class="input" id="cfg-publicip-tag" placeholder="公网IP">
+                  </div>
+                </div>
+                <div class="help">
+                  任务「公网 IP 自动放行」默认<b>每小时</b>执行（可在定时任务页改）。IP 没变就顺延有效期，
+                  变了就自动替换规则，并推送一条「IP 已跟随」的钉钉通知。
+                  这样生成的规则自带「自动续期（跟随新 IP）」，两次任务之间到期也不会被清理掉。
+                  若 NAS / 主机夜间会自动关机，开机后 15 秒内会自动补跑当天错过的那一次。
+                  想彻底不过期就填 <b>-1</b>（永久放行，不再参与到期回收）。
+                  若你用固定 IP 放行，可在「规则」编辑里把续期方式改成「原 IP 续期」。
+                </div>
+                <div class="help">
+                  <b>动态 IP + 永久放行</b>：永久只是不再按到期时间回收，IP 跟随仍由本任务负责。
+                  但永久规则没有到期点，也就少了「到期时自动跟随」这条兜底，只剩本任务一条路——
+                  所以「永久 + 每小时检查」是动态 IP 最稳的组合：关机多久都不怕丢规则，IP 一变最多个把小时跟上。
+                  同 IP 时任务只更新本地记录，不调用云端接口，开销可以忽略。
+                </div>
+              </div>
+            </div>
+
+            <div class="card">
               <div class="card-head"><h3>规则变更通知</h3><span class="desc">放行 / 删除 / 续期 / 到期都会推一条到钉钉群</span></div>
               <div class="card-body">
                 <div class="field">
                   <label class="switch"><input type="checkbox" id="cfg-notify-enabled"><span class="track"></span>启用规则变更通知</label>
                 </div>
-                <div class="form-row-3">
+                <div class="form-row-4">
                   <label class="switch"><input type="checkbox" id="cfg-notify-allow"><span class="track"></span>放行</label>
                   <label class="switch"><input type="checkbox" id="cfg-notify-delete"><span class="track"></span>删除</label>
                   <label class="switch"><input type="checkbox" id="cfg-notify-renew"><span class="track"></span>续期</label>
-                </div>
-                <div class="field">
                   <label class="switch"><input type="checkbox" id="cfg-notify-expire"><span class="track"></span>到期回收</label>
                 </div>
                 <div class="field">
@@ -723,6 +771,81 @@
 
             <div class="card">
               <div class="card-head">
+                <h3>二次验证 (2FA)</h3>
+                <span class="desc">TOTP 动态口令，叠加在口令 / Token 之上，保护高敏感动作</span>
+              </div>
+              <div class="card-body">
+                <div class="field">
+                  <label class="switch"><input type="checkbox" id="cfg-2fa-enabled"><span class="track"></span>启用二次验证</label>
+                  <div class="help">启用前请先生成密钥、扫码绑定并点「验证」确认无误，避免把自己锁在门外。</div>
+                </div>
+
+                <div class="field">
+                  <label>适用范围</label>
+                  <div class="form-row-3">
+                    <label class="switch"><input type="checkbox" id="cfg-2fa-scope-web"><span class="track"></span>网页登录</label>
+                    <label class="switch"><input type="checkbox" id="cfg-2fa-scope-webhook"><span class="track"></span>Webhook 放行</label>
+                    <label class="switch"><input type="checkbox" id="cfg-2fa-scope-dingtalk"><span class="track"></span>钉钉机器人</label>
+                  </div>
+                  <div class="help">
+                    网页登录：登录时校验；Webhook：请求头 <code>X-2FA-Code</code>；
+                    钉钉：变更指令附带 <code>code=123456</code>（严格模式下所有指令都要）。
+                  </div>
+                </div>
+
+                <div class="field">
+                  <label>高级策略</label>
+                  <div class="form-row">
+                    <label class="switch"><input type="checkbox" id="cfg-2fa-dingtalk-all"><span class="track"></span>机器人严格模式</label>
+                    <label class="switch"><input type="checkbox" id="cfg-2fa-webhook-skip-private"><span class="track"></span>内网 / 回环免验证</label>
+                  </div>
+                  <div class="help">机器人严格模式：开启后所有指令（含帮助 / 列表 / 状态）都要口令；关闭则只拦放行 / 删除 / 续期。</div>
+                  <label style="margin-top:12px;display:block">Webhook 受信任网段（逗号分隔，这些来源免 2FA）</label>
+                  <input class="input mono" id="cfg-2fa-trusted-cidrs" placeholder="127.0.0.1/32, 192.168.0.0/16">
+                </div>
+
+                <div class="divider"></div>
+
+                <div class="field">
+                  <label>密钥与绑定二维码</label>
+                  <div class="f2fa-bind">
+                    <div class="f2fa-qr" id="f2fa-qr"><div class="empty">尚未绑定</div></div>
+                    <div class="f2fa-meta">
+                      <div class="f2fa-secret mono" id="f2fa-secret">—</div>
+                      <div class="form-row" style="margin-top:10px">
+                        <input class="input" id="cfg-2fa-issuer" placeholder="发行方（默认：动态云防火墙）">
+                        <input class="input" id="cfg-2fa-account" placeholder="账号标签（默认：admin）">
+                      </div>
+                      <div class="row-gap">
+                        <button class="btn btn-sm btn-primary" id="btn-2fa-generate">生成新密钥</button>
+                        <button class="btn btn-sm" id="btn-2fa-show-qr">显示二维码</button>
+                      </div>
+                      <div class="help">用 Google Authenticator / 1Password / 微软验证器 扫描二维码；也可手动输入上面的密钥。</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="field">
+                  <label>自定义密钥（Base32，可选）</label>
+                  <div class="form-row">
+                    <input class="input mono" id="cfg-2fa-custom" placeholder="粘贴已有密钥，留空则沿用上面的密钥" autocomplete="off">
+                    <button class="btn" id="btn-2fa-apply-custom" style="flex:0 0 auto">应用</button>
+                  </div>
+                </div>
+
+                <div class="field">
+                  <label>验证当前口令</label>
+                  <div class="form-row">
+                    <input class="input mono" id="cfg-2fa-code" inputmode="numeric" maxlength="6" placeholder="6 位动态口令" autocomplete="one-time-code">
+                    <button class="btn" id="btn-2fa-verify" style="flex:0 0 auto">验证</button>
+                  </div>
+                  <div class="help" id="f2fa-verify-hint">输入认证器显示的 6 位数字，确认密钥正确后再启用二次验证。</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-head">
                 <h3>数据库备份</h3>
                 <div class="right"><button class="btn btn-sm btn-primary" id="btn-backup-run">立即备份</button></div>
               </div>
@@ -741,6 +864,237 @@
             <div class="hint-box warn">
               配置保存后立即生效：定时任务会重载、钉钉长连接会重连。密钥字段留空表示保持原值不变。
             </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===================================================== 使用教程 -->
+      <section class="page" id="page-guide">
+        <div class="guide-toc">
+          <span class="guide-toc-label">本页目录</span>
+          <a href="javascript:void(0)" data-guide-jump="g-quick">三步上手</a>
+          <a href="javascript:void(0)" data-guide-jump="g-entries">放行入口</a>
+          <a href="javascript:void(0)" data-guide-jump="g-bot">钉钉指令</a>
+          <a href="javascript:void(0)" data-guide-jump="g-publicip">公网 IP</a>
+          <a href="javascript:void(0)" data-guide-jump="g-webhook">Webhook / CLI</a>
+          <a href="javascript:void(0)" data-guide-jump="g-2fa">二次验证</a>
+          <a href="javascript:void(0)" data-guide-jump="g-cron">定时任务</a>
+          <a href="javascript:void(0)" data-guide-jump="g-nas">群晖部署</a>
+          <a href="javascript:void(0)" data-guide-jump="g-faq">常见问题</a>
+        </div>
+
+        <div class="card" id="g-quick">
+          <div class="card-head"><h3>三步上手</h3><span class="desc">从零到第一条生效规则，大约 5 分钟</span></div>
+          <div class="card-body">
+            <div class="guide-steps">
+              <div class="guide-step">
+                <div class="guide-step-num">1</div>
+                <div class="guide-step-body">
+                  <h4>接入云账户</h4>
+                  <p>「系统设置 → 云账户」填 AccessKey ID / Secret，选择服务商（轻量应用服务器 SWAS 或 ECS 安全组），
+                     点「发现实例」拉取列表，把要纳管的实例勾上并保存。</p>
+                  <p class="guide-note">建议用 RAM 子账号，只授权防火墙（安全组）读写，不要用主账号 AccessKey。</p>
+                </div>
+              </div>
+              <div class="guide-step">
+                <div class="guide-step-num">2</div>
+                <div class="guide-step-body">
+                  <h4>放行第一个 IP</h4>
+                  <p>「阿里云防火墙 → 一键放行本机公网 IP」，填端口（<code>ALL</code> 或 <code>22</code>、<code>80,443</code>）
+                     和有效期，确认后即可在「放行规则」看到那条规则。</p>
+                  <p class="guide-note">本机公网 IP 由服务端探测；也可手填别人的 IP。</p>
+                </div>
+              </div>
+              <div class="guide-step">
+                <div class="guide-step-num">3</div>
+                <div class="guide-step-body">
+                  <h4>把自动化打开</h4>
+                  <p>「系统设置 → 公网 IP 自动放行」开启后，服务会按计划把当前公网 IP 同步进防火墙；
+                     「规则变更通知」开启后，放行 / 删除 / 到期都会推到钉钉群。</p>
+                  <p class="guide-note">想用群里发 IP 放行，再配「钉钉机器人」一页的凭证即可。</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" id="g-entries">
+          <div class="card-head"><h3>五种放行入口</h3><span class="desc">同一套业务逻辑，云端操作完全一致</span></div>
+          <div class="card-body">
+            <table class="guide-table">
+              <thead><tr><th>入口</th><th>适合谁</th><th>怎么用</th></tr></thead>
+              <tbody>
+                <tr><td>网页后台</td><td>日常运维</td><td>本页左侧「阿里云防火墙」或「放行规则」，图形化填写</td></tr>
+                <tr><td>钉钉机器人</td><td>群内协作</td><td>群里 @机器人 发 <code>1.2.3.4 22</code>，卡片回执</td></tr>
+                <tr><td>Webhook</td><td>ddns-go / 路由器</td><td><code>POST /webhook/ip-change</code>，IP 一变就自动放行</td></tr>
+                <tr><td>定时任务</td><td>动态 IP 主机</td><td>「公网 IP 自动放行」按计划同步，无需人工干预</td></tr>
+                <tr><td>命令行 cli.py</td><td>脚本 / CI</td><td><code>python cli.py allow 1.2.3.4 --ports 22 --ttl 120</code></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="card" id="g-bot">
+          <div class="card-head"><h3>钉钉机器人指令</h3><span class="desc">推荐 Stream 模式，无需公网 IP 回调</span></div>
+          <div class="card-body">
+            <table class="guide-table">
+              <thead><tr><th>发送内容</th><th>效果</th></tr></thead>
+              <tbody>
+                <tr><td><code>1.2.3.4</code></td><td>放行全部端口（TCP+UDP）</td></tr>
+                <tr><td><code>1.2.3.4 22</code> / <code>1.2.3.4:22</code></td><td>仅放行 22 端口</td></tr>
+                <tr><td><code>1.2.3.4 22,80,443</code></td><td>多端口</td></tr>
+                <tr><td><code>1.2.3.4 8000-9000</code></td><td>端口段</td></tr>
+                <tr><td><code>1.2.3.4 53 udp</code></td><td>指定协议</td></tr>
+                <tr><td><code>1.2.3.4 1.2.3.5 22</code></td><td>多 IP 同端口</td></tr>
+                <tr><td><code>删除 1.2.3.4</code></td><td>撤销放行（软删除，可恢复）</td></tr>
+                <tr><td><code>续期 1.2.3.4 2h</code></td><td>在原到期时间上延长（<code>m</code>/<code>h</code>/<code>d</code>）</td></tr>
+                <tr><td><code>列表</code> / <code>状态</code> / <code>我的IP</code> / <code>帮助</code></td><td>查询类指令</td></tr>
+              </tbody>
+            </table>
+            <p class="guide-note">若开启了「二次验证 → 钉钉」，敏感指令后面要带上动态口令，例如
+              <code>1.2.3.4 22 123456</code> 或 <code>1.2.3.4 22 #123456</code>。</p>
+          </div>
+        </div>
+
+        <div class="card" id="g-publicip">
+          <div class="card-head"><h3>公网 IP 自动放行</h3><span class="desc">家庭宽带 / 动态 IP / NAS 穿透场景的核心功能</span></div>
+          <div class="card-body">
+            <p>开启后，定时任务 <code>sync_public_ip</code> 会按计划探测本机当前公网 IP，并与
+              <code>来源=public_ip</code> 的规则比对：</p>
+            <ul class="guide-list">
+              <li><b>还没放过这个 IP</b> → 按设置的端口 / 协议 / 有效期新建规则；</li>
+              <li><b>IP 没变</b> → 只刷新有效期，不重复创建，<b>也不调用云端接口</b>；</li>
+              <li><b>IP 变了</b> → 删除旧 IP 的规则，按新 IP 重建，并推送一条「公网 IP 已自动跟随」通知。</li>
+            </ul>
+            <table class="guide-table">
+              <thead><tr><th>有效期取值</th><th>含义</th></tr></thead>
+              <tbody>
+                <tr><td>正数（分钟）</td><td>直接使用该有效期</td></tr>
+                <tr><td><code>0</code></td><td>跟随「规则策略 → 默认有效期」</td></tr>
+                <tr><td><code>-1</code></td><td><b>永久放行</b>：不写到期时间、永不参与过期回收</td></tr>
+              </tbody>
+            </table>
+            <p><b>动态 IP + 长期放行（NAS 穿透）推荐组合：</b>有效期填 <code>-1</code>，计划保持默认的
+              <b>每小时</b>。永久保证「关机多久都不丢规则」，每小时检查保证「IP 一变最多个把小时跟上」。
+              而永久规则没有到期点，也就没有「到期时自动跟随」那条兜底，所以别把计划调得太稀。</p>
+            <p class="guide-note">主机夜间会自动关机？调度器启动后 15 秒会补跑当天错过的<b>日级</b>任务
+              （每日备份、日志清理等），日志里记为「启动补跑任务」。每小时任务开机后自然会在下一个整点执行。</p>
+          </div>
+        </div>
+
+        <div class="card" id="g-webhook">
+          <div class="card-head"><h3>Webhook 与命令行</h3><span class="desc">给 ddns-go、路由器、CI 脚本调用</span></div>
+          <div class="card-body">
+            <pre class="guide-code">curl -X POST http://你的地址:5050/webhook/ip-change \
+  -H "Content-Type: application/json" \
+  -H "X-Webhook-Secret: 系统设置里填的密钥" \
+  -d '{"ipv4":"1.2.3.4","ports":"ALL","ttl_minutes":1440,"domain":"home.ddns.net"}'</pre>
+            <p>支持字段：<code>ip</code> / <code>ipv4</code> / <code>ipv6</code> / <code>ports</code> /
+              <code>protocol</code> / <code>ttl_minutes</code> / <code>domain</code>。</p>
+            <p class="guide-note">没配密钥时，该接口<b>只接受本机回环调用</b>（网页「一键放行」走的就是这条路），
+              外部请求一律 403。要让 ddns-go 调用，必须先在「系统设置 → Webhook」设置密钥；
+              若开启了 Webhook 二次验证，还要带 <code>X-2FA-Code: 123456</code>，
+              或在白名单网段里让该来源免验证。</p>
+            <pre class="guide-code">export DCF_SERVER=http://127.0.0.1:5050
+export DCF_TOKEN=系统设置里的读写 Token
+
+python cli.py status
+python cli.py list --status current --limit 20
+python cli.py allow 1.2.3.4 --ports 22 --ttl 120 --tag 家里
+python cli.py renew 1.2.3.4 --minutes 1440
+python cli.py deny 1.2.3.4 --ports 22
+python cli.py diff</pre>
+          </div>
+        </div>
+
+        <div class="card" id="g-2fa">
+          <div class="card-head"><h3>二次验证（2FA）</h3><span class="desc">TOTP 动态口令，与口令 / Token 叠加</span></div>
+          <div class="card-body">
+            <ol class="guide-list guide-ordered">
+              <li>「系统设置 → 二次验证」点「生成密钥」，页面出现二维码；</li>
+              <li>用 Google Authenticator / 微软 Authenticator / 1Password 扫码绑定；</li>
+              <li>在「验证」框输入客户端显示的 6 位数字，确认密钥配对成功；</li>
+              <li>打开总开关，再按需勾选作用范围：网页登录、Webhook、钉钉机器人；</li>
+              <li>保存后立即生效，网页登录会多出一个动态口令输入框。</li>
+            </ol>
+            <p>两个附加策略：<b>钉钉全指令验证</b>（默认只验放行 / 删除 / 续期）、
+              <b>Webhook 内网免验证</b>（含自定义白名单网段），避免本机调用被自己拦住。</p>
+            <p class="guide-note">密钥属于敏感信息，界面上只显示后 4 位；换手机前请先备份密钥或重新生成。</p>
+          </div>
+        </div>
+
+        <div class="card" id="g-cron">
+          <div class="card-head"><h3>定时任务</h3><span class="desc">进程内调度，无需外部 cron</span></div>
+          <div class="card-body">
+            <table class="guide-table">
+              <thead><tr><th>任务</th><th>默认计划</th><th>作用</th></tr></thead>
+              <tbody>
+                <tr><td>过期规则清理</td><td>每 5 分钟</td><td>删除已到期的规则（先处理自动续期）</td></tr>
+                <tr><td>云端规则同步</td><td>每 15 分钟</td><td>拉取云端规则，修正本地镜像与漂移</td></tr>
+                <tr><td>云凭证健康检查</td><td>每 10 分钟</td><td>提前发现 AccessKey 失效</td></tr>
+                <tr><td>到期前提醒</td><td>每 5 分钟</td><td>规则到期前推一条钉钉提醒</td></tr>
+                <tr><td><b>公网 IP 自动放行</b></td><td><b>每小时</b></td><td>同步当前公网 IP，IP 变了自动替换</td></tr>
+                <tr><td>陈旧规则清理</td><td>每天 03:00</td><td>清理长期未刷新的自动规则</td></tr>
+                <tr><td>日志归档清理</td><td>每天 04:30</td><td>按保留天数清理日志与任务记录</td></tr>
+                <tr><td>数据库备份</td><td>每天 05:00</td><td>在线备份 SQLite，滚动保留最近 N 份</td></tr>
+                <tr><td>每日状态推送</td><td>每天 09:00</td><td>汇总规则数量与任务状态推钉钉</td></tr>
+              </tbody>
+            </table>
+            <p class="guide-note">计划可在「定时任务」页逐条修改，保存后调度器热重载，无需重启。
+              进程停机期间错过的<b>日级任务</b>，会在启动 15 秒后自动补跑一次。</p>
+          </div>
+        </div>
+
+        <div class="card" id="g-nas">
+          <div class="card-head"><h3>群晖 / NAS 部署要点</h3><span class="desc">Docker 单进程，数据必须落在挂载目录</span></div>
+          <div class="card-body">
+            <ul class="guide-list">
+              <li><b>必须单实例</b>：调度器与钉钉长连接都是进程内单例，不要起多个副本。</li>
+              <li><b>持久化</b>：<code>./data</code>（数据库 + 配置镜像）和 <code>./logs</code> 必须挂载出来，
+                  否则重建镜像会丢规则与凭证。</li>
+              <li><b>更新代码</b>：源码是打进镜像的，改完要「重新构建」而不是只「重启」；
+                  重建前不要用整包覆盖 <code>data/</code>。</li>
+              <li><b>夜间自动关机</b>：日级任务会在开机后补跑；把公网 IP 任务保持每小时，开机最多等一小时。</li>
+              <li><b>端口</b>：默认 <code>5050</code>，容器内监听 <code>0.0.0.0</code>，映射到宿主机即可。</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="card" id="g-faq">
+          <div class="card-head"><h3>常见问题</h3><span class="desc">先看这几条，能省掉大部分排查</span></div>
+          <div class="card-body">
+            <details class="guide-faq">
+              <summary>刚放行的 IP，规则列表里看不到？</summary>
+              <p>检查列表上方的状态筛选（默认只看「在用」）。被删除的规则是软删除，切到「已删除」才能看到，
+                 可在那里恢复。</p>
+            </details>
+            <details class="guide-faq">
+              <summary>群里斯 @机器人 没反应？</summary>
+              <p>依次确认：机器人开关已开、长连接状态正常（顶栏「机器人」徽标）、确实 @了机器人、
+                 发送人在允许名单内（留空表示不限制）、群在允许名单内。</p>
+            </details>
+            <details class="guide-faq">
+              <summary>内网穿透突然断了？</summary>
+              <p>多半是公网 IP 变了。看「日志与记录」里有没有「公网 IP 已自动跟随」，或者钉钉有没有收到 IP 变化通知；
+                 也可以在「阿里云防火墙」页对比云端规则与当前公网 IP。</p>
+            </details>
+            <details class="guide-faq">
+              <summary>凌晨的定时任务没执行？</summary>
+              <p>先看主机在那段时间是否开机。停机期间错过的日级任务会在启动后自动补跑；
+                 每小时任务则在开机后的第一个整点执行。</p>
+            </details>
+            <details class="guide-faq">
+              <summary>忘记后台口令了怎么办？</summary>
+              <p>停掉服务，在项目目录执行下面的脚本把口令重置为 <code>admin123</code>，重启后用
+                 <code>admin / admin123</code> 登录，系统会强制要求改密。其余配置不会丢。</p>
+              <pre class="guide-code">python -c "
+import json, sqlite3
+c = sqlite3.connect('data/app.db')
+v = c.execute(\"SELECT value FROM settings WHERE key='app_settings'\").fetchone()[0]
+d = json.loads(v); d['server']['admin_password'] = 'admin123'
+c.execute(\"UPDATE settings SET value=? WHERE key='app_settings'\", (json.dumps(d, ensure_ascii=False),))
+c.commit(); print('ok')"</pre>
+            </details>
           </div>
         </div>
       </section>

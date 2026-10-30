@@ -16,7 +16,7 @@ from flask import Flask, jsonify, redirect, request, send_from_directory, sessio
 
 from app.cloud.factory import build_client, provider_name
 from app.cloud.swas import CloudError, port_to_display
-from app.core import geo, rules_service
+from app.core import geo, rules_service, twofa
 from app.core.iputil import get_public_ip
 from app.cron.cronexpr import DEFAULT_TZ, describe, summarize, validate
 from app.cron.jobs import JOB_FUNCS
@@ -178,6 +178,7 @@ def create_app(start_services: bool = False) -> Flask:
     register_page_routes(app)
     register_auth_routes(app)
     register_settings_routes(app)
+    register_twofa_routes(app)
     register_rule_routes(app)
     register_cloud_routes(app)
     register_cron_routes(app)
@@ -282,6 +283,20 @@ def register_auth_routes(app: Flask) -> None:
         pass_ok = hmac.compare_digest(password, expected_pass)
 
         if user_ok and pass_ok:
+            # 口令正确后，若开启了「网页登录」二次验证，再校验动态口令
+            if twofa.is_required("web_login"):
+                otp = str(data.get("otp") or data.get("code") or "").strip()
+                if not otp:
+                    store.log("登录", target=user, status="failed", level="WARNING", message="需要动态口令")
+                    return fail("请输入动态口令", 401, code="TOTP_REQUIRED")
+                if not twofa.verify(twofa.secret(), otp, window=twofa.window()):
+                    import time as _t
+
+                    item = failures.setdefault(addr, {"count": 0, "at": _t.time()})
+                    item["count"] += 1
+                    item["at"] = _t.time()
+                    store.log("登录失败", target=user, status="failed", level="WARNING", message="动态口令错误")
+                    return fail("动态口令错误或已过期", 401, code="TOTP_INVALID")
             failures.pop(addr, None)
             session["user"] = user
             store.log("登录", target=user, message=f"来源 {addr}")
@@ -332,7 +347,7 @@ def register_auth_routes(app: Flask) -> None:
     @app.post("/api/account/password")
     @login_required
     def change_password():
-        """修改管理台口令；改完自动解除「必须改密」状态。"""
+        """修改管理后台口令；改完自动解除「必须改密」状态。"""
         data = request.get_json(silent=True) or {}
         old = str(data.get("old_password", ""))
         new = str(data.get("new_password", ""))
@@ -352,7 +367,7 @@ def register_auth_routes(app: Flask) -> None:
             return fail("新口令不能与原口令相同", 400)
 
         settings.update({"server": {"admin_password": new, "must_change_password": False}})
-        store.log("修改口令", target=session.get("user", ""), message="管理台口令已更新")
+        store.log("修改口令", target=session.get("user", ""), message="管理后台口令已更新")
         return ok({"must_change_password": False}, message="口令已更新")
 
     @app.get("/api/account/tokens")
@@ -397,6 +412,148 @@ def register_auth_routes(app: Flask) -> None:
 
 
 # --------------------------------------------------------------------------- 设置
+# --------------------------------------------------------------------------- 二次验证（2FA）
+def register_twofa_routes(app: Flask) -> None:
+    """二次验证（TOTP）的绑定与配置接口。写操作均要求登录（会话或读写 Token）。"""
+
+    @app.get("/api/2fa/status")
+    @login_required
+    def twofa_status():
+        # 不主动返回 otpauth 链接，避免密钥在常规轮询里反复出现
+        return ok(twofa.status(include_uri=False))
+
+    @app.post("/api/2fa/generate")
+    @login_required
+    def twofa_generate():
+        """生成新的随机密钥并落库（覆盖旧密钥），返回二维码供扫描绑定。"""
+        body = request.get_json(silent=True) or {}
+        issuer = str(body.get("issuer") or settings.get("twofa.issuer") or twofa.DEFAULT_ISSUER)
+        account = str(body.get("account") or settings.get("twofa.account") or "admin")
+        secret = twofa.generate_secret()
+        settings.update({"twofa": {"secret": secret, "issuer": issuer, "account": account}})
+        uri = twofa.otpauth_uri(secret, account=account, issuer=issuer)
+        store.log("2FA", target=session.get("user", "api-token"), message="生成新的二次验证密钥")
+        return ok(
+            {
+                "secret": secret,
+                "secret_masked": twofa.mask_secret(secret),
+                "otpauth_uri": uri,
+                "qr_svg": twofa.qr_svg(uri),
+            }
+        )
+
+    @app.put("/api/2fa/secret")
+    @login_required
+    def twofa_set_secret():
+        """自定义密钥（Base32），校验格式，避免存进去却算不出口令。"""
+        body = request.get_json(silent=True) or {}
+        raw = str(body.get("secret") or "").strip()
+        if not twofa.is_valid_secret(raw):
+            return fail("密钥格式不合法，应为 Base32（A-Z、2-7）", 400, code="INVALID_SECRET")
+        issuer = str(body.get("issuer") or settings.get("twofa.issuer") or twofa.DEFAULT_ISSUER)
+        account = str(body.get("account") or settings.get("twofa.account") or "admin")
+        secret = twofa.normalize_secret(raw).rstrip("=")
+        settings.update({"twofa": {"secret": secret, "issuer": issuer, "account": account}})
+        uri = twofa.otpauth_uri(secret, account=account, issuer=issuer)
+        store.log("2FA", target=session.get("user", "api-token"), message="自定义二次验证密钥")
+        return ok(
+            {
+                "secret": secret,
+                "secret_masked": twofa.mask_secret(secret),
+                "otpauth_uri": uri,
+                "qr_svg": twofa.qr_svg(uri),
+            }
+        )
+
+    @app.get("/api/2fa/qrcode")
+    @login_required
+    def twofa_qrcode():
+        """返回当前密钥的二维码，用于重新展示绑定信息。"""
+        payload = twofa.status(include_uri=True)
+        if not payload.get("has_secret"):
+            return fail("尚未配置密钥，请先生成或填写", 400, code="NO_SECRET")
+        return ok(
+            {
+                "otpauth_uri": payload.get("otpauth_uri", ""),
+                "qr_svg": payload.get("qr_svg", ""),
+                "secret_masked": payload.get("secret_masked", ""),
+            }
+        )
+
+    @app.post("/api/2fa/verify")
+    @login_required
+    def twofa_verify():
+        """用当前密钥校验一个动态口令，用于「扫描后确认绑定正确」。"""
+        body = request.get_json(silent=True) or {}
+        code = str(body.get("code") or body.get("otp") or "").strip()
+        secret = twofa.secret()
+        if not twofa.is_valid_secret(secret):
+            return fail("尚未配置密钥", 400, code="NO_SECRET")
+        if not code:
+            return fail("请输入动态口令", 400, code="TOTP_REQUIRED")
+        if twofa.verify(secret, code, window=twofa.window()):
+            store.log("2FA", target=session.get("user", "api-token"), message="动态口令校验通过")
+            return ok({"valid": True, "seconds_remaining": twofa.seconds_remaining()}, message="口令正确")
+        store.log(
+            "2FA",
+            status="failed",
+            level="WARNING",
+            target=session.get("user", "api-token"),
+            message="动态口令校验失败",
+        )
+        return fail("动态口令错误或已过期", 400, code="TOTP_INVALID")
+
+    @app.put("/api/2fa/config")
+    @login_required
+    def twofa_config():
+        """保存启用开关与适用范围；启用前必须有合法密钥，防止把自己锁在门外。"""
+        body = request.get_json(silent=True) or {}
+        patch: Dict[str, Any] = {}
+        if "enabled" in body:
+            enabled = bool(body.get("enabled"))
+            if enabled and not twofa.is_valid_secret(twofa.secret()):
+                return fail("请先生成或填写密钥，再启用二次验证", 400, code="NO_SECRET")
+            patch["enabled"] = enabled
+        if isinstance(body.get("scope"), dict):
+            scope_patch: Dict[str, bool] = {}
+            for name in twofa.SCOPES:
+                if name in body["scope"]:
+                    scope_patch[name] = bool(body["scope"][name])
+            if scope_patch:
+                patch["scope"] = scope_patch
+        for key in ("issuer", "account"):
+            if key in body and str(body.get(key)).strip():
+                patch[key] = str(body[key]).strip()
+        if "window" in body:
+            try:
+                patch["window"] = max(0, min(5, int(body["window"])))
+            except (TypeError, ValueError):
+                pass
+        if "dingtalk_all" in body:
+            patch["dingtalk_all"] = bool(body["dingtalk_all"])
+        if "webhook_skip_private" in body:
+            patch["webhook_skip_private"] = bool(body["webhook_skip_private"])
+        if "webhook_trusted_cidrs" in body:
+            raw = body["webhook_trusted_cidrs"]
+            if isinstance(raw, str):
+                raw = raw.replace("，", " ").replace(",", " ").split()
+            if not isinstance(raw, list):
+                raw = []
+            cleaned, invalid = twofa.normalize_cidrs(raw)
+            if invalid:
+                return fail(f"白名单网段不合法：{', '.join(invalid)}", 400, code="INVALID_CIDR")
+            patch["webhook_trusted_cidrs"] = cleaned
+        if not patch:
+            return fail("没有可保存的配置", 400)
+        settings.update({"twofa": patch})
+        store.log(
+            "2FA",
+            target=session.get("user", "api-token"),
+            message=f"更新二次验证配置：{', '.join(sorted(patch.keys()))}",
+        )
+        return ok(twofa.status(include_uri=False), message="二次验证配置已保存")
+
+
 def register_settings_routes(app: Flask) -> None:
     @app.get("/api/settings")
     @login_required
@@ -424,6 +581,8 @@ def register_settings_routes(app: Flask) -> None:
                 "server",
                 "notify",
                 "geo",
+                "twofa",
+                "public_ip",
             )
             if before.get(key) != merged.get(key)
         }
@@ -553,6 +712,8 @@ def register_rule_routes(app: Flask) -> None:
                 actor=session.get("user", "web"),
                 instance_ids=instance_ids or None,
                 tag=str(data.get("tag") or "").strip()[:32],
+                auto_renew=bool(data.get("auto_renew")),
+                renew_mode=str(data.get("renew_mode") or "follow"),
             )
         except CloudError as exc:
             return fail(str(exc))
@@ -571,6 +732,8 @@ def register_rule_routes(app: Flask) -> None:
                 description=data.get("description"),
                 ttl_minutes=(_safe_int(data["ttl_minutes"], 0, 0, 525600) if data.get("ttl_minutes") not in (None, "") else None),
                 actor=session.get("user", "web"),
+                auto_renew=data.get("auto_renew"),
+                renew_mode=data.get("renew_mode"),
             )
         except CloudError as exc:
             return fail(str(exc))
@@ -788,6 +951,9 @@ def register_cloud_routes(app: Flask) -> None:
             secret = settings.get("webhook.secret", "")
             if secret:
                 headers["X-Webhook-Secret"] = secret
+            # 本机内部调用由服务端自行生成动态口令，否则开启 Webhook 二次验证后会自锁
+            if twofa.is_required("webhook"):
+                headers["X-2FA-Code"] = twofa.current_code(twofa.secret())
             try:
                 resp = requests.post(
                     url,
@@ -918,7 +1084,7 @@ def _security_warnings() -> list:
             {
                 "level": "high",
                 "key": "weak_password",
-                "message": "管理台仍在使用默认口令 admin123，请立刻在「系统设置」中修改。",
+                "message": "管理后台仍在使用默认口令 admin123，请立刻在「系统设置」中修改。",
             }
         )
     if not settings.get("webhook.secret", ""):
@@ -1217,6 +1383,22 @@ def register_webhook_routes(app: Flask) -> None:
         ipv6 = (data.get("ipv6") or "").strip()
         if not ipv4 and not ipv6:
             return fail("缺少 ip / ipv4 / ipv6 字段")
+
+        # 二次验证：若开启了 Webhook 场景，请求必须携带动态口令（请求头 X-2FA-Code 或 body.otp）
+        # 例外：来源命中白名单网段，或开启了「内网免验证」且来自内网/回环，则跳过
+        if twofa.is_required("webhook") and not twofa.webhook_client_trusted(_client_ip()):
+            code = str(
+                request.headers.get("X-2FA-Code")
+                or data.get("otp")
+                or data.get("code")
+                or ""
+            ).strip()
+            if not code:
+                store.log("Webhook", status="failed", level="WARNING", message="缺少二次验证码")
+                return fail("缺少二次验证码（请求头 X-2FA-Code）", 401, code="TOTP_REQUIRED")
+            if not twofa.verify(twofa.secret(), code, window=twofa.window()):
+                store.log("Webhook", status="failed", level="WARNING", message="二次验证码无效")
+                return fail("二次验证码无效或已过期", 401, code="TOTP_INVALID")
 
         ports = data.get("ports") or settings.get("dingtalk.default_ports") or "ALL"
         protocol = data.get("protocol") or "tcp"

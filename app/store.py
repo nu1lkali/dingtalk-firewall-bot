@@ -45,7 +45,8 @@ CREATE TABLE IF NOT EXISTS rules (
     expires_at      TEXT DEFAULT '',
     snapshot        TEXT DEFAULT '',
     tag             TEXT DEFAULT '',
-    notified_at     TEXT DEFAULT ''
+    notified_at     TEXT DEFAULT '',
+    auto_renew      INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_rules_instance ON rules(instance_id);
 CREATE INDEX IF NOT EXISTS idx_rules_ip ON rules(ip);
@@ -126,6 +127,8 @@ class Store:
     _RULE_COLUMNS = {
         "tag": "TEXT DEFAULT ''",
         "notified_at": "TEXT DEFAULT ''",
+        "auto_renew": "INTEGER NOT NULL DEFAULT 0",
+        "renew_mode": "TEXT DEFAULT 'follow'",
     }
 
     def _migrate(self) -> None:
@@ -188,8 +191,9 @@ class Store:
         return self._execute(
             """INSERT INTO rules(provider, instance_id, instance_name, rule_id, ip, cidr,
                                  protocol, port, description, status, source, actor,
-                                 created_at, updated_at, expires_at, snapshot, tag, notified_at)
-               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                                 created_at, updated_at, expires_at, snapshot, tag, notified_at,
+                                 auto_renew, renew_mode)
+               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 data.get("provider", "aliyun_swas"),
                 data.get("instance_id", ""),
@@ -209,6 +213,8 @@ class Store:
                 data.get("snapshot", ""),
                 data.get("tag", ""),
                 data.get("notified_at", ""),
+                1 if data.get("auto_renew") else 0,
+                data.get("renew_mode") or "follow",
             ),
         )
 
@@ -245,6 +251,8 @@ class Store:
         status_in: Optional[List[str]] = None,
         tag: Optional[str] = None,
         protocol: Optional[str] = None,
+        source: Optional[str] = None,
+        auto_renew: Optional[bool] = None,
         **ignored,
     ) -> tuple:
         where, params = [], []
@@ -263,6 +271,12 @@ class Store:
         if protocol:
             where.append("protocol=?")
             params.append(protocol.lower())
+        if source:
+            where.append("source=?")
+            params.append(source)
+        if auto_renew is not None:
+            where.append("auto_renew=?")
+            params.append(1 if auto_renew else 0)
         if keyword:
             where.append("(ip LIKE ? OR description LIKE ? OR port LIKE ? OR tag LIKE ? OR actor LIKE ?)")
             like = f"%{keyword}%"

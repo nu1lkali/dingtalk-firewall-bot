@@ -21,10 +21,33 @@ from app.utils.logger import logger
 
 def job_cleanup_expired() -> Tuple[str, str]:
     result = rules_service.cleanup_expired_rules()
+    renewed = result.get("auto_renew") or {}
+    extra = ""
+    if renewed.get("total"):
+        extra = (
+            f"；自动续期 {renewed['renewed']} 条"
+            f"，跟随新 IP {renewed['followed']} 条"
+            f"，失败 {renewed['failed']} 条"
+        )
     if result["total"] == 0:
-        return "success", "没有需要清理的过期规则"
+        return "success", "没有需要清理的过期规则" + extra
     status = "success" if result["failed"] == 0 else "warning"
-    return status, f"过期规则 {result['total']} 条：清理 {result['removed']}，失败 {result['failed']}"
+    return status, f"过期规则 {result['total']} 条：清理 {result['removed']}，失败 {result['failed']}{extra}"
+
+
+def job_sync_public_ip() -> Tuple[str, str]:
+    """每天把当前公网 IP 同步进防火墙（家庭宽带 / 动态 IP 场景）。"""
+    result = rules_service.sync_public_ip_rule()
+    if result.get("skipped"):
+        return "skipped", result.get("reason", "未开启公网 IP 自动放行")
+    if not result.get("ok"):
+        return "failed", result.get("message", "同步失败")
+    if result.get("created"):
+        return "success", f"已按公网 IP {result['ip']} 新建规则，有效期至 {result['expires_at']}"
+    return "success", (
+        f"公网 IP {result['ip']} 未变，已续期 {result['refreshed']} 条至 {result['expires_at']}"
+        f"（替换旧 IP 规则 {result['replaced']} 条）"
+    )
 
 
 def job_sync_cloud_rules() -> Tuple[str, str]:
@@ -122,6 +145,7 @@ JOB_FUNCS = {
     "health_probe": job_health_probe,
     "daily_report": job_daily_report,
     "expiring_notice": job_expiring_notice,
+    "sync_public_ip": job_sync_public_ip,
     "backup_db": job_backup_db,
 }
 
@@ -133,5 +157,6 @@ JOB_DESCRIPTIONS = {
     "health_probe": "验证阿里云 AccessKey 是否可用，提前发现凭证失效",
     "daily_report": "每天汇总规则数量与任务状态并推送钉钉群",
     "expiring_notice": "规则到期前推送提醒，避免业务被误断",
+    "sync_public_ip": "每天把当前公网 IP 同步进防火墙，IP 变了自动替换",
     "backup_db": "在线备份 SQLite 数据库，并滚动清理旧备份",
 }

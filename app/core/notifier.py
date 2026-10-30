@@ -79,7 +79,7 @@ def build_message(kind: str, rows: Iterable[Dict[str, Any]], extra: str = "") ->
     for row in rows[:20]:
         lines.append(f"- {render_line(kind, row, template)}")
     if len(rows) > 20:
-        lines.append(f"- 其余 {len(rows) - 20} 条请在管理台查看")
+        lines.append(f"- 其余 {len(rows) - 20} 条请在管理后台查看")
     if extra:
         lines.extend(["", extra])
     lines.extend(["", f"<font color=#8C8C8C>动态云防火墙 · {datetime.now().strftime('%m-%d %H:%M:%S')}</font>"])

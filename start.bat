@@ -62,7 +62,7 @@ if not exist "data" mkdir data
 
 echo [4/4] 启动服务...
 echo.
-echo   管理台：http://127.0.0.1:5050
+echo   管理后台：http://127.0.0.1:5050
 echo   默认账号：admin / admin123（登录后请及时修改）
 echo   按 Ctrl+C 停止服务
 echo.

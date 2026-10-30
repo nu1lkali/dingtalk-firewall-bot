@@ -1,5 +1,5 @@
 /* ============================================================
-   动态云防火墙 · 管理台逻辑
+   动态云防火墙 · 管理后台逻辑
    ============================================================ */
 (function () {
   'use strict';
@@ -15,6 +15,7 @@
     cron: { title: '定时任务', sub: '内置调度器，无需外部 cron 依赖' },
     logs: { title: '日志与记录', sub: '操作审计与机器人指令留痕' },
     settings: { title: '系统设置', sub: '云账户、安全与服务参数统一管理' },
+    guide: { title: '使用教程', sub: '从接入云账户到自动化放行的完整操作指引' },
   };
 
   const state = {
@@ -333,6 +334,9 @@
           '<button class="btn btn-sm btn-danger" data-act="purge" data-id="' + r.id + '">清理记录</button>';
       } else if (isActive) {
         actions = '<button class="btn btn-sm" data-act="renew" data-id="' + r.id + '">续期</button>' +
+          '<button class="btn btn-sm' + (r.auto_renew ? ' btn-primary' : '') + '" data-act="auto" data-id="' + r.id +
+          '" data-enable="' + (r.auto_renew ? '0' : '1') + '" title="开启后到期时自动探测公网 IP 并续期">' +
+          (r.auto_renew ? '自动续期 开' : '自动续期') + '</button>' +
           '<button class="btn btn-sm" data-act="edit" data-id="' + r.id + '">编辑</button>' +
           '<button class="btn btn-sm" data-act="toggle" data-id="' + r.id + '" data-enable="0">禁用</button>' +
           '<button class="btn btn-sm btn-danger" data-act="del" data-id="' + r.id + '">删除</button>';
@@ -356,7 +360,9 @@
         '<td data-label="标签">' + tagHtml + '</td>' +
         '<td data-label="来源"><span class="badge badge-accent">' + esc(sourceLabel(r.source)) + '</span></td>' +
         '<td data-label="状态">' + statusBadge(r.status) + '</td>' +
-        '<td data-label="到期">' + esc(r.expires_at || '长期') + '</td>' +
+        '<td data-label="到期">' + esc(r.expires_at || '长期') +
+        (r.auto_renew ? ' <span class="badge badge-accent" title="' + (r.renew_mode === 'same' ? '到期时原 IP 原地续期（不探测、不改云端）' : '到期时探测公网 IP，IP 变了自动跟随') + '">' + (r.renew_mode === 'same' ? '自动·原IP' : '自动·跟随') + '</span>' : '') +
+        '</td>' +
         '<td><div class="actions">' + actions + '</div></td></tr>';
     }).join('');
 
@@ -452,7 +458,7 @@
 
 
   function sourceLabel(source) {
-    const map = { dingtalk: '钉钉', webhook: 'Webhook', web: '手动', cron: '定时', 'cloud-sync': '同步', cloud: '云端' };
+    const map = { dingtalk: '钉钉', webhook: 'Webhook', web: '手动', cron: '定时', 'cloud-sync': '同步', cloud: '云端', public_ip: '公网IP' };
     return map[source] || source || '手动';
   }
 
@@ -473,6 +479,11 @@
         return;
       } else if (act === 'renew') {
         openRenewModal(rule);
+        return;
+      } else if (act === 'auto') {
+        const res = await api('/api/rules/' + id, { method: 'PUT', body: { auto_renew: enable } });
+        toast(res.message || (enable ? '已开启自动续期' : '已关闭自动续期'));
+        loadRules();
         return;
       } else if (act === 'restore') {
         const okToRestore = await confirmDialog('恢复到云端', '将把 ' + label + ' 重新下发到阿里云防火墙，确认继续？', false);
@@ -620,7 +631,18 @@
         esc(rule ? rule.tag : '') + '">' + tagDatalist() +
         '<div class="help">标签用于分组筛选，同一标签可跨实例。</div></div>' +
         '<div class="field"><label>备注</label><input class="input" id="m-desc" placeholder="例如：家里宽带" value="' +
-        esc(rule ? rule.description : '') + '"></div></div>',
+        esc(rule ? rule.description : '') + '"></div></div>' +
+        '<div class="field"><label class="switch"><input type="checkbox" id="m-auto-renew"' +
+        (rule && rule.auto_renew ? ' checked' : '') +
+        '><span class="track"></span>到期自动续期</label>' +
+        '<div class="help">开启后，规则到期时会自动续期，续期方式见下方选项。</div></div>' +
+        '<div class="field" id="m-renew-mode-field"' + (rule && rule.auto_renew ? '' : ' style="opacity:.5;pointer-events:none"') + '>' +
+        '<label>续期方式</label>' +
+        '<select class="select" id="m-renew-mode">' +
+        '<option value="follow"' + ((rule ? (rule.renew_mode || 'follow') : 'follow') === 'follow' ? ' selected' : '') + '>跟随新 IP（探测当前公网 IP，变了自动替换）</option>' +
+        '<option value="same"' + ((rule ? (rule.renew_mode || 'follow') : 'follow') === 'same' ? ' selected' : '') + '>原 IP 续期（保持当前 IP，仅顺延有效期，不探测、不改云端）</option>' +
+        '</select>' +
+        '<div class="help">「原 IP 续期」适合固定 IP / 静态办公网段；「跟随新 IP」适合家庭宽带等动态 IP。</div></div>',
       footer: '<button class="btn" data-act="cancel">取消</button>' +
         '<button class="btn btn-primary" data-act="save">' + (isEdit ? '保存' : '创建') + '</button>',
     });
@@ -628,6 +650,16 @@
     $$('#m-port-presets button', m.root).forEach((btn) => {
       btn.onclick = () => { $('#m-ports', m.root).value = btn.dataset.port; };
     });
+
+    const autoRenewEl = $('#m-auto-renew', m.root);
+    if (autoRenewEl) {
+      autoRenewEl.onchange = (e) => {
+        const f = $('#m-renew-mode-field', m.root);
+        if (!f) return;
+        f.style.opacity = e.target.checked ? '1' : '.5';
+        f.style.pointerEvents = e.target.checked ? 'auto' : 'none';
+      };
+    }
 
     $('[data-act="cancel"]', m.root).onclick = m.close;
     $('[data-act="save"]', m.root).onclick = async () => {
@@ -638,6 +670,8 @@
         description: $('#m-desc', m.root).value.trim(),
         tag: $('#m-tag', m.root).value.trim(),
         ttl_minutes: Number($('#m-ttl', m.root).value || 0),
+        auto_renew: $('#m-auto-renew', m.root).checked,
+        renew_mode: $('#m-renew-mode', m.root).value || 'follow',
       };
       if (isEdit) {
         payload.instance_id = rule.instance_id;
@@ -945,7 +979,6 @@
       $('#dt-enabled').checked = !!cfg.enabled;
       $('#dt-default-ports').value = cfg.default_ports || 'ALL';
       $('#dt-default-protocol').value = cfg.default_protocol || 'tcp';
-      $('#dt-ttl').value = cfg.default_ttl_minutes || 0;
       $('#dt-allowed-conv').value = (cfg.allowed_conversations || []).join('\n');
       $('#dt-allowed-user').value = (cfg.allowed_users || []).join('\n');
       $('#dt-require-at').checked = cfg.require_at !== false;
@@ -967,7 +1000,6 @@
         enabled: $('#dt-enabled').checked,
         default_ports: $('#dt-default-ports').value.trim() || 'ALL',
         default_protocol: $('#dt-default-protocol').value,
-        default_ttl_minutes: Number($('#dt-ttl').value || 0),
         allowed_conversations: $('#dt-allowed-conv').value.split('\n').map((s) => s.trim()).filter(Boolean),
         allowed_users: $('#dt-allowed-user').value.split('\n').map((s) => s.trim()).filter(Boolean),
         require_at: $('#dt-require-at').checked,
@@ -1449,8 +1481,17 @@
       $('#cfg-webhook-secret').value = (cfg.webhook || {}).secret || '';
       $('#cfg-metrics-public').checked = server.metrics_public !== false;
 
+      const publicIp = cfg.public_ip || {};
+      $('#cfg-publicip-enabled').checked = !!publicIp.enabled;
+      $('#cfg-publicip-notify').checked = publicIp.notify_on_change !== false;
+      $('#cfg-publicip-ports').value = publicIp.ports || 'ALL';
+      $('#cfg-publicip-protocol').value = publicIp.protocol || 'tcp';
+      $('#cfg-publicip-ttl').value = publicIp.ttl_minutes || 0;
+      $('#cfg-publicip-tag').value = publicIp.tag || '公网IP';
+
       renderInstances(aliyun.instances || []);
       renderCronToggles(cfg.cron || {});
+      renderTwofa(cfg.twofa || {});
       renderWebhookExample();
       fillInstanceSelect();
       loadTokens();
@@ -1531,13 +1572,17 @@
       health_probe: '云凭证健康检查',
       daily_report: '每日状态推送',
       expiring_notice: '到期前提醒',
+      sync_public_ip: '公网 IP 自动放行',
       backup_db: '数据库备份',
     };
+    // 合并「配置里实际存在的任务」与「内置名称表」，避免新增任务后设置页漏显示
+    const ids = Array.from(new Set([...Object.keys(jobs), ...Object.keys(names)]));
     const box = $('#cron-toggles');
-    box.innerHTML = Object.keys(names).map((id) => {
+    box.innerHTML = ids.map((id) => {
       const item = jobs[id] || {};
+      const label = item.name || names[id] || id;
       return '<div class="row-between" style="padding:6px 0">' +
-        '<div><div style="font-weight:600;font-size:13px">' + names[id] + '</div>' +
+        '<div><div style="font-weight:600;font-size:13px">' + esc(label) + '</div>' +
         '<div class="cron-chip">' + esc(item.cron || '') + '</div></div>' +
         '<label class="switch"><input type="checkbox" data-job="' + id + '"' +
         (item.enabled !== false ? ' checked' : '') + '><span class="track"></span></label></div>';
@@ -1546,6 +1591,99 @@
       '<span class="small muted">总开关</span>' +
       '<label class="switch"><input type="checkbox" data-job="__master"' +
       (cron.enabled !== false ? ' checked' : '') + '><span class="track"></span></label></div>';
+  }
+
+  /* ---------------------------------------------------------- 二次验证 (2FA) */
+  function renderTwofa(cfg) {
+    cfg = cfg || {};
+    if (!$('#cfg-2fa-enabled')) return;
+    $('#cfg-2fa-enabled').checked = !!cfg.enabled;
+    const scope = cfg.scope || {};
+    $('#cfg-2fa-scope-web').checked = !!scope.web_login;
+    $('#cfg-2fa-scope-webhook').checked = !!scope.webhook;
+    $('#cfg-2fa-scope-dingtalk').checked = !!scope.dingtalk;
+    $('#cfg-2fa-issuer').value = cfg.issuer || '动态云防火墙';
+    $('#cfg-2fa-account').value = cfg.account || 'admin';
+    const cidrs = cfg.webhook_trusted_cidrs || [];
+    $('#cfg-2fa-dingtalk-all').checked = !!cfg.dingtalk_all;
+    $('#cfg-2fa-webhook-skip-private').checked = !!cfg.webhook_skip_private;
+    $('#cfg-2fa-trusted-cidrs').value = Array.isArray(cidrs) ? cidrs.join(', ') : (cidrs || '');
+    $('#f2fa-secret').textContent = cfg.secret || '（尚未配置）';
+    $('#f2fa-qr').innerHTML = '<div class="empty">点击「显示二维码」查看</div>';
+    setTwofaHint('');
+  }
+
+  function setTwofaHint(text, kind) {
+    const el = $('#f2fa-verify-hint');
+    if (!el) return;
+    el.textContent = text || '输入认证器显示的 6 位数字，确认密钥正确后再启用二次验证。';
+    el.style.color = kind === 'ok' ? 'var(--accent-dark)' : (kind === 'err' ? '#c0392b' : '');
+  }
+
+  function paintTwofaQr(payload, fullSecret) {
+    if (payload && payload.qr_svg) {
+      $('#f2fa-qr').innerHTML = payload.qr_svg;
+    } else {
+      $('#f2fa-qr').innerHTML = '<div class="empty">二维码不可用，请复制下方密钥手动添加到认证器</div>';
+    }
+    if (fullSecret && payload && payload.secret) {
+      $('#f2fa-secret').textContent = payload.secret;
+    } else if (payload && payload.secret_masked) {
+      $('#f2fa-secret').textContent = payload.secret_masked;
+    }
+  }
+
+  async function twofaGenerate() {
+    try {
+      const data = await api('/api/2fa/generate', {
+        method: 'POST',
+        body: {
+          issuer: $('#cfg-2fa-issuer').value.trim(),
+          account: $('#cfg-2fa-account').value.trim(),
+        },
+      });
+      paintTwofaQr(data, true);
+      setTwofaHint('已生成新密钥，请扫码绑定后点「验证」确认。', 'ok');
+      toast('已生成新密钥');
+    } catch (e) { toast(e.message, 'error'); }
+  }
+
+  async function twofaShowQr() {
+    try {
+      const data = await api('/api/2fa/qrcode');
+      paintTwofaQr(data, false);
+    } catch (e) { toast(e.message, 'error'); }
+  }
+
+  async function twofaApplyCustom() {
+    const secret = $('#cfg-2fa-custom').value.trim();
+    if (!secret) { toast('请先粘贴 Base32 密钥', 'error'); return; }
+    try {
+      const data = await api('/api/2fa/secret', {
+        method: 'PUT',
+        body: {
+          secret: secret,
+          issuer: $('#cfg-2fa-issuer').value.trim(),
+          account: $('#cfg-2fa-account').value.trim(),
+        },
+      });
+      paintTwofaQr(data, true);
+      setTwofaHint('已应用自定义密钥，请扫码/手动添加后点「验证」。', 'ok');
+      toast('密钥已应用');
+    } catch (e) { toast(e.message, 'error'); }
+  }
+
+  async function twofaVerify() {
+    const code = $('#cfg-2fa-code').value.trim();
+    if (!/^\d{6}$/.test(code)) { toast('请输入 6 位数字口令', 'error'); return; }
+    try {
+      await api('/api/2fa/verify', { method: 'POST', body: { code: code } });
+      setTwofaHint('✓ 口令正确，可以启用二次验证了。', 'ok');
+      toast('口令正确');
+    } catch (e) {
+      setTwofaHint('✗ ' + e.message, 'err');
+      toast(e.message, 'error');
+    }
   }
 
   function renderWebhookExample() {
@@ -1603,9 +1741,39 @@
         admin_user: $('#cfg-admin-user').value.trim(),
         metrics_public: $('#cfg-metrics-public').checked,
       },
+      public_ip: {
+        enabled: $('#cfg-publicip-enabled').checked,
+        notify_on_change: $('#cfg-publicip-notify').checked,
+        ports: $('#cfg-publicip-ports').value.trim() || 'ALL',
+        protocol: $('#cfg-publicip-protocol').value,
+        ttl_minutes: Number($('#cfg-publicip-ttl').value || 0),
+        tag: $('#cfg-publicip-tag').value.trim() || '公网IP',
+      },
       webhook: { secret: $('#cfg-webhook-secret').value },
       cron: { enabled: master ? master.checked : true, jobs: jobs },
     };
+
+    // 先保存二次验证（后端会校验「启用前必须有密钥」），失败则中止整体保存
+    if ($('#cfg-2fa-enabled')) {
+      try {
+        await api('/api/2fa/config', {
+          method: 'PUT',
+          body: {
+            enabled: $('#cfg-2fa-enabled').checked,
+            issuer: $('#cfg-2fa-issuer').value.trim(),
+            account: $('#cfg-2fa-account').value.trim(),
+            scope: {
+              web_login: $('#cfg-2fa-scope-web').checked,
+              webhook: $('#cfg-2fa-scope-webhook').checked,
+              dingtalk: $('#cfg-2fa-scope-dingtalk').checked,
+            },
+            dingtalk_all: $('#cfg-2fa-dingtalk-all').checked,
+            webhook_skip_private: $('#cfg-2fa-webhook-skip-private').checked,
+            webhook_trusted_cidrs: $('#cfg-2fa-trusted-cidrs').value.trim(),
+          },
+        });
+      } catch (e) { toast('二次验证保存失败：' + e.message, 'error'); return; }
+    }
 
     try {
       state.settings = await api('/api/settings', { method: 'PUT', body: patch });
@@ -1795,6 +1963,16 @@
     $$('[data-goto]').forEach((el) => {
       el.onclick = (e) => { e.preventDefault(); go(el.dataset.goto); };
     });
+    // 教程页目录跳转（不用 # 锚点，避免和 hash 路由打架）
+    $$('[data-guide-jump]').forEach((el) => {
+      el.onclick = (e) => {
+        e.preventDefault();
+        const target = document.getElementById(el.dataset.guideJump);
+        if (!target) return;
+        const top = target.getBoundingClientRect().top + window.pageYOffset - 80;
+        window.scrollTo({ top: top, behavior: 'smooth' });
+      };
+    });
 
     /* 移动端抽屉菜单 */
     const toggleBtn = $('#btn-nav-toggle');
@@ -1972,6 +2150,13 @@
       btn.disabled = false;
     };
     $('#btn-notify-preview').onclick = previewNotify;
+    /* 二次验证 (2FA) */
+    if ($('#btn-2fa-generate')) {
+      $('#btn-2fa-generate').onclick = twofaGenerate;
+      $('#btn-2fa-show-qr').onclick = twofaShowQr;
+      $('#btn-2fa-apply-custom').onclick = twofaApplyCustom;
+      $('#btn-2fa-verify').onclick = twofaVerify;
+    }
     $('#btn-test-aliyun').onclick = async () => {
       try {
         const data = await api('/api/settings/test/aliyun', { method: 'POST' });

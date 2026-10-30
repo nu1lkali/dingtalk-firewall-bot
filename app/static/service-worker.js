@@ -51,7 +51,7 @@ self.addEventListener('fetch', (event) => {
   }
 
   /* 静态资源：网络优先 + 缓存兜底
-     不用 stale-while-revalidate，是因为管理台升级后如果先给旧 CSS/JS，
+     不用 stale-while-revalidate，是因为管理后台升级后如果先给旧 CSS/JS，
      会出现「刷新一次还是旧界面」的困惑；宁可慢一点也要拿到最新版本。 */
   event.respondWith(
     fetch(req)

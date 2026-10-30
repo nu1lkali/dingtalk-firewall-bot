@@ -88,6 +88,10 @@
       <input id="username" name="username" autocomplete="username" placeholder="admin" required>
       <label for="password">密码</label>
       <input id="password" name="password" type="password" autocomplete="current-password" placeholder="请输入密码" required>
+      <div id="otp-wrap" style="display:none">
+        <label for="otp">动态口令（2FA）</label>
+        <input id="otp" name="otp" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="6 位动态口令">
+      </div>
       <button type="submit" id="submit-btn">登 录</button>
     </form>
     <div class="tip">默认账号 admin / admin123；首次登录会强制修改口令，改完才能进入后台</div>
@@ -98,6 +102,8 @@
 const form = document.getElementById('login-form');
 const err = document.getElementById('err');
 const btn = document.getElementById('submit-btn');
+const otpWrap = document.getElementById('otp-wrap');
+const otpInput = document.getElementById('otp');
 
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -111,11 +117,22 @@ form.addEventListener('submit', async (e) => {
       body: JSON.stringify({
         username: document.getElementById('username').value.trim(),
         password: document.getElementById('password').value,
+        otp: otpWrap.style.display !== 'none' ? otpInput.value.trim() : '',
       }),
     });
     const data = await resp.json();
     if (resp.ok && data.ok) {
       location.href = '/';
+      return;
+    }
+    // 服务端要求动态口令：展开输入框，提示用户补充
+    if (data.code === 'TOTP_REQUIRED') {
+      otpWrap.style.display = 'block';
+      otpInput.focus();
+      err.textContent = data.message || '请输入动态口令';
+      err.style.display = 'block';
+      btn.disabled = false;
+      btn.textContent = '登 录';
       return;
     }
     throw new Error(data.message || '登录失败');
