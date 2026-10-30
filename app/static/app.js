@@ -1621,10 +1621,27 @@
   }
 
   function paintTwofaQr(payload, fullSecret) {
+    const box = $('#f2fa-qr');
     if (payload && payload.qr_svg) {
-      $('#f2fa-qr').innerHTML = payload.qr_svg;
+      box.innerHTML = payload.qr_svg;
+      // 兜底：早期版本返回的 SVG 只有 width/height、没有 viewBox，
+      // 被 CSS 撑成 100% 后不会等比缩放，只会把右下角裁掉（显示不全）。
+      // 这里补一个 viewBox 并去掉固定宽高，老服务端/缓存也能正常显示。
+      const svg = box.querySelector('svg');
+      if (svg) {
+        if (!svg.getAttribute('viewBox')) {
+          const w = parseFloat(svg.getAttribute('width')) || 0;
+          const h = parseFloat(svg.getAttribute('height')) || 0;
+          if (w > 0 && h > 0) {
+            svg.setAttribute('viewBox', '0 0 ' + w + ' ' + h);
+          }
+        }
+        svg.removeAttribute('width');
+        svg.removeAttribute('height');
+        svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+      }
     } else {
-      $('#f2fa-qr').innerHTML = '<div class="empty">二维码不可用，请复制下方密钥手动添加到认证器</div>';
+      box.innerHTML = '<div class="empty">二维码不可用，请复制下方密钥手动添加到认证器</div>';
     }
     if (fullSecret && payload && payload.secret) {
       $('#f2fa-secret').textContent = payload.secret;

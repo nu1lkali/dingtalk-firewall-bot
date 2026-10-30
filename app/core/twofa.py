@@ -146,7 +146,13 @@ def otpauth_uri(
 
 
 def qr_svg(uri: str, scale: int = 6) -> str:
-    """把 otpauth 链接渲染为内联 SVG；segno 缺失时返回空串（前端降级显示链接）。"""
+    """
+    把 otpauth 链接渲染为内联 SVG；segno 缺失时返回空串（前端降级显示链接）。
+
+    omitsize=True 是关键：segno 默认只输出 width/height（如 198x198）而**不带 viewBox**，
+    前端 CSS 把它撑成 100% 填充容器时不会等比缩放，只会把右下角裁掉一大块（二维码显示不全）。
+    带上 viewBox 后，SVG 才会随容器自适应缩放。
+    """
     if not uri:
         return ""
     try:
@@ -154,7 +160,9 @@ def qr_svg(uri: str, scale: int = 6) -> str:
     except Exception:  # noqa: BLE001
         return ""
     qr = segno.make(uri, error="m")
-    return qr.svg_inline(scale=scale, border=2, dark="#0f172a", light="#ffffff")
+    return qr.svg_inline(
+        scale=scale, border=2, dark="#0f172a", light="#ffffff", omitsize=True
+    )
 
 
 # --------------------------------------------------------------------------- 配置

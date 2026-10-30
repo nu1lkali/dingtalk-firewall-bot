@@ -1684,6 +1684,17 @@ class TwoFactorTest(BaseCase):
         self.assertIn("issuer=", uri)
         self.assertIn("<svg", twofa.qr_svg(uri))
 
+    def test_qr_svg_has_viewbox_not_fixed_size(self):
+        """回归：segno 默认只给 width/height、不给 viewBox，前端撑满容器时会把二维码裁掉。"""
+        secret = twofa.generate_secret()
+        uri = twofa.otpauth_uri(secret, account="admin", issuer="测试发行方")
+        svg = twofa.qr_svg(uri)
+        self.assertTrue(svg.startswith("<svg"), svg[:80])
+        head = svg[:200]
+        self.assertIn("viewBox=", head, "内联 SVG 必须带 viewBox 才能随容器等比缩放")
+        self.assertNotIn('width="', head, "不应再输出固定 width，否则会被容器裁切")
+        self.assertNotIn('height="', head, "不应再输出固定 height，否则会被容器裁切")
+
     def test_extract_code_variants(self):
         code, cleaned = twofa.extract_code("1.2.3.4 22 code=123456")
         self.assertEqual(code, "123456")

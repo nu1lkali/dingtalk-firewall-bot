@@ -1372,8 +1372,8 @@ label.switch .track {
 .f2fa-bind { display: flex; gap: 18px; align-items: flex-start; flex-wrap: wrap; }
 
 .f2fa-qr {
-  width: 180px;
-  height: 180px;
+  width: 200px;
+  height: 200px;
   flex: 0 0 auto;
   background: #fff;
   border: 1px solid var(--border);
@@ -1382,8 +1382,18 @@ label.switch .track {
   align-items: center;
   justify-content: center;
   padding: 8px;
+  overflow: hidden;
 }
-.f2fa-qr svg { width: 100%; height: 100%; display: block; }
+/* 二维码必须等比缩放到容器内：svg 需要 viewBox（后端已输出，前端也有兜底），
+   否则会被撑成 100% 后裁掉右下角。 */
+.f2fa-qr svg {
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  display: block;
+  shape-rendering: crispEdges;
+}
 
 .f2fa-meta { flex: 1 1 240px; min-width: 220px; }
 
@@ -1402,7 +1412,7 @@ label.switch .track {
 
 @media (max-width: 720px) {
   .f2fa-bind { flex-direction: column; }
-  .f2fa-qr { width: 160px; height: 160px; align-self: center; }
+  .f2fa-qr { width: 176px; height: 176px; align-self: center; }
 }
 
 /* ---------------------------------------------------------- 使用教程页 */
