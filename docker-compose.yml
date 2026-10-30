@@ -13,6 +13,9 @@ services:
       # 配置、规则镜像、日志、任务记录都在这两个目录，务必持久化
       - ./data:/app/data
       - ./logs:/app/logs
+      # 前端静态资源（HTML/CSS/JS）直接挂载：改完覆盖文件 + 浏览器强刷即可生效，
+      # 不必为了一个 CSS 改动重新 build 镜像。后端 Python 改动仍需重新 build。
+      - ./app/static:/app/static:ro
     restart: unless-stopped
     # 单进程部署：定时任务与钉钉长连接均依赖进程内单例
     healthcheck:
