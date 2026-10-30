@@ -44,9 +44,11 @@ def job_sync_public_ip() -> Tuple[str, str]:
         return "failed", result.get("message", "同步失败")
     if result.get("created"):
         return "success", f"已按公网 IP {result['ip']} 新建规则，有效期至 {result['expires_at']}"
+    merged = result.get("merged") or 0
+    merged_text = f"，合并重复行 {merged} 条" if merged else ""
     return "success", (
         f"公网 IP {result['ip']} 未变，已续期 {result['refreshed']} 条至 {result['expires_at']}"
-        f"（替换旧 IP 规则 {result['replaced']} 条）"
+        f"（替换旧 IP 规则 {result['replaced']} 条）{merged_text}"
     )
 
 

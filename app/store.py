@@ -253,6 +253,10 @@ class Store:
         protocol: Optional[str] = None,
         source: Optional[str] = None,
         auto_renew: Optional[bool] = None,
+        ip: Optional[str] = None,
+        cidr: Optional[str] = None,
+        port: Optional[str] = None,
+        rule_id: Optional[str] = None,
         **ignored,
     ) -> tuple:
         where, params = [], []
@@ -265,6 +269,21 @@ class Store:
         if instance_id:
             where.append("instance_id=?")
             params.append(instance_id)
+        # ip / cidr / port / rule_id 必须真正参与过滤：
+        # 早期把它们留空会让「同 IP+端口是否已存在」的判断退化成「该实例最新一条」，
+        # 进而把 rule_id、到期时间、自动续期写到别的规则行上（见 _upsert_local）。
+        if ip:
+            where.append("ip=?")
+            params.append(ip)
+        if cidr:
+            where.append("cidr=?")
+            params.append(cidr)
+        if port:
+            where.append("port=?")
+            params.append(port)
+        if rule_id:
+            where.append("rule_id=?")
+            params.append(rule_id)
         if tag:
             where.append("tag=?")
             params.append(tag)
@@ -356,51 +375,170 @@ class Store:
         )
         return [dict(r) for r in rows]
 
-    def replace_instance_rules(self, instance_id: str, cloud_rules: List[Dict[str, Any]]) -> None:
-        """用云端真实规则刷新本地镜像（保留本地业务元数据：标签 / 到期 / 来源）。"""
-        local = {
-            (r["rule_id"] or f"{r['ip']}|{r['protocol']}|{r['port']}"): r
-            for r in self.find_rules(instance_id=instance_id, status_in=["active", "disabled"])
-        }
-        seen = set()
+    @staticmethod
+    def canonical_port(port: str) -> str:
+        """端口归一：云端可能返回 "ALL"，本地统一存 "1/65535"，否则匹配不上会重复插入。"""
+        text = str(port or "").strip()
+        if not text or text.upper() in {"ALL", "*"}:
+            return "1/65535"
+        return text
+
+    @classmethod
+    def natural_key(cls, ip: str, protocol: str, port: str) -> str:
+        """规则的业务唯一键：IP + 协议 + 端口（同一实例内一条防火墙规则就是这个组合）。"""
+        return "|".join(
+            [
+                str(ip or "").strip(),
+                (protocol or "tcp").strip().lower(),
+                cls.canonical_port(port),
+            ]
+        )
+
+    def replace_instance_rules(self, instance_id: str, cloud_rules: List[Dict[str, Any]]) -> int:
+        """
+        用云端真实规则刷新本地镜像（保留本地业务元数据：标签 / 到期 / 来源）。
+
+        去重策略（缺一不可，否则每跑一次同步就多一批重复行）：
+
+        1. 先合并历史遗留的同键重复行（否则 rule_id 索引会被重复行污染）；
+        2. 按 rule_id 精确匹配云端规则与本地行；
+        3. rule_id 对不上（云端 id 变了、或本地行的 rule_id 曾被别的规则覆盖）时，
+           退化成「IP + 协议 + 端口」业务键匹配，命中后把该行收编成这条云端规则；
+        4. 一条本地行只能被一条云端规则认领，避免互相抢。
+
+        返回本次合并掉的重复行数。
+        """
+        merged = self.dedupe_duplicate_rules(instance_id=instance_id)
+        local = self.find_rules(instance_id=instance_id, status_in=["active", "disabled"])
+        by_rule_id: Dict[str, Dict[str, Any]] = {}
+        by_natural: Dict[str, List[Dict[str, Any]]] = {}
+        for row in sorted(local, key=lambda r: r["id"]):
+            if row["rule_id"]:
+                by_rule_id.setdefault(row["rule_id"], row)
+            by_natural.setdefault(
+                self.natural_key(row["ip"], row["protocol"], row["port"]), []
+            ).append(row)
+
+        matched: set = set()
         for cr in cloud_rules:
-            key = cr.get("rule_id", "")
-            seen.add(key)
-            hit = local.get(key)
-            if hit:
+            rule_id = cr.get("rule_id", "") or ""
+            nat = self.natural_key(cr.get("ip", ""), cr.get("protocol", ""), cr.get("port", ""))
+
+            hit = by_rule_id.get(rule_id) if rule_id else None
+            if hit is not None and hit["id"] in matched:
+                hit = None
+            if hit is None:
+                for cand in by_natural.get(nat, []):
+                    if cand["id"] not in matched:
+                        hit = cand
+                        break
+
+            fields = {
+                "ip": cr.get("ip", ""),
+                "cidr": cr.get("cidr", ""),
+                "protocol": cr.get("protocol", "tcp"),
+                "port": self.canonical_port(cr.get("port", "ALL")),
+                "description": cr.get("description", ""),
+            }
+            if hit is not None:
+                matched.add(hit["id"])
+                fields["rule_id"] = rule_id or hit["rule_id"]
                 # 已禁用（本地标记）的规则不因同步而恢复为生效
-                keep_status = "disabled" if hit["status"] == "disabled" else "active"
-                self.update_rule(
-                    hit["id"],
-                    ip=cr.get("ip", ""),
-                    cidr=cr.get("cidr", ""),
-                    protocol=cr.get("protocol", "tcp"),
-                    port=cr.get("port", "ALL"),
-                    description=cr.get("description", ""),
-                    status=keep_status,
-                )
+                fields["status"] = "disabled" if hit["status"] == "disabled" else "active"
+                self.update_rule(hit["id"], **fields)
             else:
                 self.add_rule(
                     {
                         "instance_id": instance_id,
                         "instance_name": cr.get("instance_name", ""),
-                        "rule_id": cr.get("rule_id", ""),
+                        "rule_id": rule_id,
                         "ip": cr.get("ip", ""),
                         "cidr": cr.get("cidr", ""),
                         "protocol": cr.get("protocol", "tcp"),
-                        "port": cr.get("port", "ALL"),
+                        "port": self.canonical_port(cr.get("port", "ALL")),
                         "description": cr.get("description", ""),
                         "status": "active",
                         "source": "cloud-sync",
                         "actor": "sync",
                     }
                 )
+
         # 云端已不存在的规则标记为 deleted（可能是手动从控制台删掉）
-        for key, row in local.items():
-            if key not in seen and row["status"] == "active":
+        cloud_ids = {cr.get("rule_id", "") for cr in cloud_rules if cr.get("rule_id")}
+        cloud_natural = {
+            self.natural_key(cr.get("ip", ""), cr.get("protocol", ""), cr.get("port", ""))
+            for cr in cloud_rules
+        }
+        for row in local:
+            if row["status"] != "active":
+                continue
+            rid = row["rule_id"] or ""
+            if (rid and rid in cloud_ids) or self.natural_key(
+                row["ip"], row["protocol"], row["port"]
+            ) in cloud_natural:
+                continue
+            self.update_rule(
+                row["id"],
+                status="deleted",
+                description=((row["description"] or "") + " [云端已不存在]")[:120],
+            )
+
+        return merged
+
+    def dedupe_duplicate_rules(self, instance_id: Optional[str] = None) -> int:
+        """
+        合并「同实例 + 同 IP + 同协议 + 同端口」的重复行，返回被合并掉的行数。
+
+        保留哪一条：优先有标签的、其次有到期时间的、最后取 id 最小的（最老的那条），
+        其余行合并元数据后标记为 deleted（不物理删除，保留审计痕迹）。
+        """
+        if instance_id:
+            rows = self.find_rules(instance_id=instance_id, status_in=["active", "disabled"])
+        else:
+            rows = self.find_rules(status_in=["active", "disabled"])
+
+        groups: Dict[str, List[Dict[str, Any]]] = {}
+        for row in rows:
+            key = (
+                str(row["instance_id"] or "")
+                + "|"
+                + self.natural_key(row["ip"], row["protocol"], row["port"])
+            )
+            groups.setdefault(key, []).append(row)
+
+        removed = 0
+        for items in groups.values():
+            if len(items) < 2:
+                continue
+            keeper = max(
+                items,
+                key=lambda r: (
+                    1 if (r.get("tag") or "") else 0,
+                    len(r.get("expires_at") or ""),
+                    -int(r["id"]),
+                ),
+            )
+            tags = [r["tag"] for r in items if r.get("tag")]
+            expiries = [r["expires_at"] for r in items if r.get("expires_at")]
+            rule_ids = [r["rule_id"] for r in items if r.get("rule_id")]
+            self.update_rule(
+                keeper["id"],
+                tag=tags[0] if tags else (keeper.get("tag") or ""),
+                expires_at=max(expiries) if expiries else (keeper.get("expires_at") or ""),
+                auto_renew=1 if any(r.get("auto_renew") for r in items) else 0,
+                rule_id=keeper["rule_id"] or (rule_ids[0] if rule_ids else ""),
+                notified_at="",
+            )
+            for row in items:
+                if row["id"] == keeper["id"]:
+                    continue
                 self.update_rule(
-                    row["id"], status="deleted", description=(row["description"] or "") + " [云端已不存在]"
+                    row["id"],
+                    status="deleted",
+                    description=((row["description"] or "") + " [重复行已合并]")[:120],
                 )
+                removed += 1
+        return removed
 
     # ---------------------------------------------------------------- IP 归属地
     def get_geo(self, ip: str) -> Optional[Dict[str, Any]]:

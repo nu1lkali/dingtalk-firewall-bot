@@ -344,12 +344,13 @@ def _upsert_local(
     auto_renew: int = 0,
     renew_mode: str = "follow",
 ) -> None:
+    rule_port = store.canonical_port(rule.get("port", "ALL"))
     existing = [
         row
         for row in store.find_rules(
             instance_id=instance_id,
             ip=plain_ip,
-            port=rule.get("port", "ALL"),
+            port=rule_port,
             # 已禁用但云端仍在的行也要命中，否则重复放行会插入重复记录
             status_in=["active", "disabled"],
         )
@@ -364,6 +365,11 @@ def _upsert_local(
         store.update_rule(
             hit["id"],
             rule_id=rule.get("rule_id", "") or hit["rule_id"],
+            # 命中行可能来自云端同步且字段有偏差（如 ip 存了 /32），一并纠正，
+            # 保证「一行 = 云端一条规则」，后续按业务键匹配才不会错位
+            ip=plain_ip or hit["ip"],
+            cidr=rule.get("cidr", "") or hit.get("cidr", ""),
+            port=rule_port or hit["port"],
             expires_at=expires_at if permanent else (expires_at or hit["expires_at"]),
             status="active",
             # 到期时间被刷新，提醒标记也要重置，否则下次到期不再提醒
@@ -382,7 +388,7 @@ def _upsert_local(
             "ip": plain_ip,
             "cidr": rule.get("cidr", ""),
             "protocol": rule.get("protocol", "tcp"),
-            "port": rule.get("port", "ALL"),
+            "port": rule_port,
             "description": rule.get("description", ""),
             "status": "active",
             "source": source,
@@ -1250,7 +1256,15 @@ def sync_public_ip_rule() -> Dict[str, Any]:
         return {"ok": False, "message": "探测公网 IP 失败（多个来源均不可用）"}
 
     ttl = _public_ip_ttl(cfg)
-    rows = store.find_rules(status_in=["active"], source="public_ip")
+    tag_name = cfg.get("tag") or "公网IP"
+    # 注意：不能只按 source='public_ip' 找。规则被「云端同步」收编后 source 会变成
+    # cloud-sync，只按 source 匹配会让任务认为“本地没有该 IP 的规则”而反复新建，
+    # 所以这里同时认「来源=public_ip」或「标签=公网IP」的行。
+    rows = [
+        r
+        for r in store.find_rules(status_in=["active"])
+        if r["source"] == "public_ip" or (tag_name and r["tag"] == tag_name)
+    ]
     same = [r for r in rows if r["ip"] == public_ip]
     stale = [r for r in rows if r["ip"] != public_ip]
     stale_ips = [r["ip"] for r in stale]
@@ -1264,11 +1278,21 @@ def sync_public_ip_rule() -> Dict[str, Any]:
         expires_at = _ts_after_minutes(ttl)
         for row in same:
             store.update_rule(row["id"], expires_at=expires_at, notified_at="")
+        # 历史遗留的重复行（同一 IP+协议+端口有多条）在这里顺手合并，
+        # 这样即使还没跑到「云端同步」，也能自己把脏数据收敛掉。
+        merged = 0
+        for inst_id in {r["instance_id"] for r in same}:
+            merged += store.dedupe_duplicate_rules(instance_id=inst_id)
+        groups = {
+            (r["instance_id"], store.natural_key(r["ip"], r["protocol"], r["port"]))
+            for r in same
+        }
         return {
             "ok": True,
             "ip": public_ip,
             "created": 0,
-            "refreshed": len(same),
+            "refreshed": len(groups),
+            "merged": merged,
             "replaced": changed,
             "ttl_minutes": ttl,
             "expires_at": expires_at,
